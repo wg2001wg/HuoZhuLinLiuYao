@@ -32,3 +32,11 @@ google-services.json
 
 # Android Profiling
 *.hprof
+/.gradle.bak
+/.gradle.purge1
+/.gradle.purge2
+/.gradle.purge3
+/app/build.bak
+/app/build.purge1
+/app/build.purge2
+/app/build.purge3
