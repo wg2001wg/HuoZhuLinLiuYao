@@ -2,6 +2,9 @@ package com.example.huozhulin.ui.screens
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.repeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -228,37 +231,46 @@ private fun yaoDesc(y: CastEngine.SingleYao): String = when {
     else -> "少阴（静）"
 }
 
+/**
+ * 单枚铜钱视图。
+ * 不再使用 rotationY 3D 翻转，避免文字被镜像颠倒。
+ * 仅通过 2D 缩放+旋转动画模拟摇晃，文字始终正向。
+ */
 @Composable
 private fun CoinView(back: Boolean, rolling: Boolean, spin: Float) {
-    val rotation = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(rolling, back) {
-        if (rolling) {
-            rotation.snapTo(0f)
-            rotation.animateTo(
-                targetValue = 360f * 3 + spin * 360f,
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 650,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            )
-        } else {
-            rotation.snapTo(if (back) 180f else 0f)
-        }
-    }
-    val isBack = (((rotation.value % 360f) / 180f).toInt() % 2) == 0
+    // 摇晃动画：2D 缩放 + 平面旋转，文字始终正向，不再使用 rotationY 导致镜像颠倒
+    val coinScale by animateFloatAsState(
+        targetValue = if (rolling) 0.8f else 1f,
+        animationSpec = repeatable(
+            iterations = if (rolling) 4 else 1,
+            animation = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "coinScale"
+    )
+    val coinRotation by animateFloatAsState(
+        targetValue = if (rolling) (360f * 3 + spin * 360f) else 0f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "coinRotation"
+    )
+
     Box(
         modifier = Modifier
             .size(64.dp)
-            .graphicsLayer { rotationY = rotation.value }
-            .clip(androidx.compose.foundation.shape.CircleShape)
-            .background(if (isBack) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-            .border(2.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.CircleShape),
+            .graphicsLayer {
+                scaleX = coinScale
+                scaleY = coinScale
+                rotationZ = coinRotation
+            }
+            .clip(CircleShape)
+            .background(if (back) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = if (isBack) "背" else "字",
-            color = if (isBack) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            text = if (back) "背" else "字",
+            color = if (back) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
             fontSize = 22.sp
         )
     }
