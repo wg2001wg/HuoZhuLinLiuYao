@@ -40,21 +40,50 @@ object CastEngine {
     /* ==================== 2. 在线摇 / 铜钱摇卦 ==================== */
 
     /**
-     * 铜钱摇卦：每爻三枚铜钱。
-     * 3 正 = 老阳(9, 动, 阳)；2 正 1 反 = 少阴(8, 静, 阴)；
-     * 1 正 2 反 = 少阳(7, 静, 阳)；3 反 = 老阴(6, 动, 阴)。
+     * 单爻：抛三枚铜钱一次（标准火珠林铜钱法）。
+     * 约定：有字面（字）为阴，无字背面（背）为阳。
+     * 「背」的数量 b、或「字」的数量 w=3-b：
+     *   - 1 背 2 字 (b=1) -> 少阳（静阳）
+     *   - 2 背 1 字 (b=2) -> 少阴（静阴）
+     *   - 3 背 0 字 (b=3) -> 老阳（动阳）
+     *   - 0 背 3 字 (b=0) -> 老阴（动阴）
+     * 调用方可逐爻摇动，记录每次三枚铜钱的正反，从初爻（下）到上爻（上）排成卦。
+     */
+    data class SingleYao(
+        val backs: List<Boolean>, // 三枚铜钱，true=背(阳) false=字(阴)
+        val yang: Boolean,
+        val moving: Boolean
+    ) {
+        val symbol: String
+            get() = when {
+                moving && yang -> "○"  // 老阳
+                moving && !yang -> "×" // 老阴
+                yang -> "—"            // 少阳
+                else -> "‐‐"          // 少阴
+            }
+    }
+
+    fun castYao(): SingleYao {
+        val backs = List(3) { Random.nextBoolean() } // 每枚：true=背(阳) false=字(阴)
+        val b = backs.count { it }                    // 背面(阳)数量 0..3
+        return when (b) {
+            1 -> SingleYao(backs, true, false)   // 少阳：1背2字
+            2 -> SingleYao(backs, false, false)  // 少阴：2背1字
+            3 -> SingleYao(backs, true, true)    // 老阳：3背
+            else -> SingleYao(backs, false, true) // 老阴：3字
+        }
+    }
+
+    /**
+     * 铜钱摇卦：逐爻摇六次（初爻在下，上爻在上）。
      */
     fun coinCast(): Pair<List<Boolean>, List<Boolean>> {
         val lines = mutableListOf<Boolean>()
         val moving = mutableListOf<Boolean>()
         repeat(6) {
-            val heads = (0..2).count { Random.nextBoolean() } // 正面(阳)枚数 0..3
-            when (heads) {
-                0 -> { lines.add(false); moving.add(true) }   // 老阴 6
-                1 -> { lines.add(true); moving.add(false) }   // 少阳 7
-                2 -> { lines.add(false); moving.add(false) }  // 少阴 8
-                3 -> { lines.add(true); moving.add(true) }    // 老阳 9
-            }
+            val y = castYao()
+            lines += y.yang
+            moving += y.moving
         }
         return lines to moving
     }

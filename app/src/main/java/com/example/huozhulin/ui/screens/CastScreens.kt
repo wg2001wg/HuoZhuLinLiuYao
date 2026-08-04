@@ -1,6 +1,10 @@
 package com.example.huozhulin.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,13 +16,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,17 +38,26 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.huozhulin.data.model.DiZhi
 import com.example.huozhulin.data.model.TianGan
@@ -63,7 +80,7 @@ fun HomeScreen(nav: NavHostController) {
         ) {
             Text("请选择起卦方式", style = MaterialTheme.typography.titleMedium)
             CastButton(nav, "random", "随机卦（软件模拟手摇）")
-            CastButton(nav, "coin", "在线摇（三枚铜钱）")
+            CastButton(nav, "coin", "铜钱摇卦（逐爻摇三枚铜钱）")
             CastButton(nav, "manual", "指定卦（手动点爻）")
             CastButton(nav, "number", "数字卦")
             CastButton(nav, "date", "日期卦（农历 / 阳历）")
@@ -105,37 +122,145 @@ fun RandomScreen(nav: NavHostController, vm: PaiPanViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoinScreen(nav: NavHostController, vm: PaiPanViewModel) {
-    var lines by remember { mutableStateOf<List<Boolean>?>(null) }
-    var moving by remember { mutableStateOf<List<Boolean>?>(null) }
-    CastScaffold(nav, "在线摇") { pad ->
+    // 已摇出的爻（索引 0 = 初爻，自下而上）
+    val yaos = remember { mutableStateListOf<CastEngine.SingleYao>() }
+    var currentBacks by remember { mutableStateOf<List<Boolean>?>(null) }
+    var rolling by remember { mutableStateOf(false) }
+
+    fun rollOnce() {
+        if (rolling || yaos.size >= 6) return
+        rolling = true
+        currentBacks = List(3) { kotlin.random.Random.nextBoolean() } // 动画用随机面
+    }
+
+    // 动画结束后用引擎结果定格并提交本爻
+    LaunchedEffect(rolling) {
+        if (rolling) {
+            kotlinx.coroutines.delay(700)
+            val yao = CastEngine.castYao()
+            currentBacks = yao.backs
+            yaos.add(yao)
+            rolling = false
+        }
+    }
+
+    CastScaffold(nav, "铜钱摇卦") { pad ->
         Column(
             Modifier
                 .padding(pad)
                 .padding(16.dp)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text("掷三枚铜钱共六次，自下而上（初爻到上爻）。三正为老阳（动），三反为老阴（动）。")
-            ActionButton("摇一摇（掷六爻）") {
-                val (l, m) = CastEngine.coinCast()
-                lines = l; moving = m
-            }
-            if (lines != null && moving != null) {
-                Text("本次结果（自下而上）：", style = MaterialTheme.typography.titleSmall)
-                for (p in 0..5) {
-                    val yang = lines!![p]; val mv = moving!![p]
-                    Text(
-                        "${listOf("初", "二", "三", "四", "五", "上")[p]}爻：" +
-                                (if (yang) "阳" else "阴") + " " + (if (mv) "动" else "静")
-                    )
+            val idx = yaos.size
+            Text(
+                text = if (yaos.size < 6) "第 ${idx + 1} 爻（${YAO_POSITION_CN[idx]}爻）" else "六爻已成",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "字(有字)=阴　背(无字)=阳\n1背2字=少阳　2背1字=少阴\n3背=老阳(○动)　3字=老阴(×动)",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // 三枚铜钱
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                val backs = currentBacks ?: List(3) { false }
+                repeat(3) { c ->
+                    CoinView(back = backs.getOrNull(c) ?: false, rolling = rolling, spin = c * 0.3f)
                 }
+            }
+
+            // 本次结果
+            if (currentBacks != null && !rolling) {
+                yaos.lastOrNull()?.let { y ->
+                    Text("本次：${y.symbol}　${yaoDesc(y)}", style = MaterialTheme.typography.titleMedium)
+                }
+            } else if (rolling) {
+                Text("摇动中…", style = MaterialTheme.typography.bodyMedium)
+            }
+
+            // 操作
+            if (yaos.size < 6) {
+                ActionButton(if (yaos.isEmpty()) "开始摇卦" else "摇下一爻", enabled = !rolling) { rollOnce() }
+                if (yaos.isNotEmpty()) {
+                    TextButton(onClick = {
+                        if (!rolling) { yaos.removeAt(yaos.lastIndex); currentBacks = null }
+                    }, enabled = !rolling) { Text("撤销上一爻") }
+                }
+            } else {
                 ActionButton("前往排盘") {
-                    vm.setCast(lines!!, moving!!)
+                    vm.setCast(yaos.map { it.yang }, yaos.map { it.moving })
                     nav.navigate("result")
+                }
+                OutlinedButton(onClick = {
+                    yaos.clear(); currentBacks = null; rolling = false
+                }) { Text("重摇") }
+            }
+
+            // 已摇爻记录（上→下展示）
+            if (yaos.isNotEmpty()) {
+                Text("卦象（上→下）", style = MaterialTheme.typography.labelLarge)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (i in (yaos.size - 1) downTo 0) {
+                        val y = yaos[i]
+                        Text(
+                            text = "${YAO_POSITION_CN[i]}爻 ${y.symbol}　${yaoDesc(y)}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+private val YAO_POSITION_CN = listOf("初", "二", "三", "四", "五", "上")
+
+private fun yaoDesc(y: CastEngine.SingleYao): String = when {
+    y.moving && y.yang -> "老阳（动）"
+    y.moving && !y.yang -> "老阴（动）"
+    y.yang -> "少阳（静）"
+    else -> "少阴（静）"
+}
+
+@Composable
+private fun CoinView(back: Boolean, rolling: Boolean, spin: Float) {
+    val rotation = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(rolling, back) {
+        if (rolling) {
+            rotation.snapTo(0f)
+            rotation.animateTo(
+                targetValue = 360f * 3 + spin * 360f,
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 650,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+            )
+        } else {
+            rotation.snapTo(if (back) 180f else 0f)
+        }
+    }
+    val isBack = (((rotation.value % 360f) / 180f).toInt() % 2) == 0
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .graphicsLayer { rotationY = rotation.value }
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(if (isBack) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .border(2.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (isBack) "背" else "字",
+            color = if (isBack) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            fontSize = 22.sp
+        )
     }
 }
 
@@ -455,8 +580,8 @@ private fun CastScaffold(nav: NavHostController, title: String, content: @Compos
 }
 
 @Composable
-private fun ActionButton(text: String, onClick: () -> Unit) {
-    Button(onClick = onClick, Modifier.fillMaxWidth()) { Text(text) }
+private fun ActionButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text(text) }
 }
 
 @Composable
