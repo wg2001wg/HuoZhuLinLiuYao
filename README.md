@@ -52,8 +52,8 @@ HuoZhuLinLiuYao/
 │       ├── viewmodel/        # PaiPanViewModel
 │       └── MainActivity.kt   # 导航宿主（Compose Navigation）
 ├── keystore/release.jks      # release 签名密钥（见下「构建 Release 包」）
-├── generated-images/         # AI 生成的图标 / 素材预览
-├── icon_base.png             # 应用图标底图
+├── generated-images/         # AI 生成的图标 / 素材预览（app 启动图标底图即出自此处）
+├── icon_base.png             # 应用图标底图（AI 生成，详见 generated-images/）
 ├── gradlew / gradlew.bat     # Gradle Wrapper 脚本（已内置）
 ├── verify_fix.py / verify_gz.py  # Python 参考实现，用于引擎逻辑对照校验
 └── build.gradle.kts / settings.gradle.kts / gradle.properties
