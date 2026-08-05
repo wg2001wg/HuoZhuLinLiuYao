@@ -67,7 +67,6 @@ import com.liuyao.huozhulin.data.model.DiZhi
 import com.liuyao.huozhulin.data.model.TianGan
 import com.liuyao.huozhulin.data.model.Trigram
 import com.liuyao.huozhulin.engine.CastEngine
-import com.liuyao.huozhulin.engine.LunarCalendar
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
 import java.util.Calendar
 
@@ -87,7 +86,7 @@ fun HomeScreen(nav: NavHostController) {
             CastButton(nav, "coin", "铜钱摇卦（逐爻摇三枚铜钱）")
             CastButton(nav, "manual", "指定卦（手动点爻）")
             CastButton(nav, "number", "数字卦")
-            CastButton(nav, "date", "日期卦（农历 / 阳历）")
+            CastButton(nav, "date", "日期卦")
             CastButton(nav, "hourMinute", "时分卦")
             CastButton(nav, "lifetime", "终身卦")
             Spacer(Modifier.height(8.dp))
@@ -385,13 +384,21 @@ fun NumberScreen(nav: NavHostController, vm: PaiPanViewModel) {
 @Composable
 fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
     val c = Calendar.getInstance()
-    var useLunar by remember { mutableStateOf(false) }
     var year by remember { mutableStateOf(c.get(Calendar.YEAR).toString()) }
     var month by remember { mutableStateOf((c.get(Calendar.MONTH) + 1).toString()) }
     var day by remember { mutableStateOf(c.get(Calendar.DAY_OF_MONTH).toString()) }
     var hour by remember { mutableStateOf(c.get(Calendar.HOUR_OF_DAY).toString()) }
     var extra by remember { mutableStateOf("0") }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun setNow() {
+        val n = Calendar.getInstance()
+        year = n.get(Calendar.YEAR).toString()
+        month = (n.get(Calendar.MONTH) + 1).toString()
+        day = n.get(Calendar.DAY_OF_MONTH).toString()
+        hour = n.get(Calendar.HOUR_OF_DAY).toString()
+    }
+
     CastScaffold(nav, "日期卦") { pad ->
         Column(
             Modifier
@@ -402,10 +409,6 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("按图片说明：上卦=(年+月+日)除8余数；下卦=(上卦总数+时支数+附加数)除8余数；动爻=下卦总数除6余数。")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = useLunar, onCheckedChange = { useLunar = it })
-                Text(if (useLunar) "使用农历日期" else "使用阳历日期")
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallOutlinedField(year, { year = it.filter { ch -> ch.isDigit() } }, "年", Modifier.weight(1f))
                 SmallOutlinedField(month, { month = it.filter { ch -> ch.isDigit() } }, "月", Modifier.weight(1f))
@@ -414,6 +417,11 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallOutlinedField(hour, { hour = it.filter { ch -> ch.isDigit() } }, "时(0-23)", Modifier.weight(1f))
                 SmallOutlinedField(extra, { extra = it.filter { ch -> ch.isDigit() } }, "附加数", Modifier.weight(1f))
+            }
+            OutlinedButton(onClick = { setNow() }, Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("设置为当前时间")
             }
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
             ActionButton("日期起卦") {
@@ -427,19 +435,7 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
                     error = "日期/时间输入不合法"; return@ActionButton
                 }
                 try {
-                    val (l, mov) = if (useLunar) {
-                        // 需要农历年支数；这里先用公历转农历得到农历年月日
-                        val lunar = LunarCalendar.toLunar(y, m, d, h)
-                        CastEngine.lunarDateCast(
-                            lunarYear = lunar.year,
-                            lunarMonth = lunar.month,
-                            lunarDay = lunar.day,
-                            hourBranch = DiZhi.forHour(h).ordinal + 1,
-                            extra = ex
-                        )
-                    } else {
-                        CastEngine.solarDateCast(y, m, d, DiZhi.forHour(h).ordinal + 1, ex)
-                    }
+                    val (l, mov) = CastEngine.solarDateCast(y, m, d, DiZhi.forHour(h).ordinal + 1, ex)
                     vm.setCast(l, mov)
                     nav.navigate("result")
                 } catch (e: Exception) {
