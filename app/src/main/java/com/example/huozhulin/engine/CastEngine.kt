@@ -158,11 +158,11 @@ object CastEngine {
 
     /**
      * 日期卦（阳历）。
-     * 上卦 = (年 + 月 + 日) 除 8 余数；
+     * 上卦 = (年地支序数 + 月 + 日) 除 8 余数；
      * 下卦 = (上卦总数 + 时支数 + 附加数) 除 8 余数；
      * 动爻 = 下卦总数 除 6 余数。
      *
-     * @param year  阳历年
+     * @param year  阳历年（内部转换为年地支序数 1~12 参与运算）
      * @param month 阳历月
      * @param day   阳历日
      * @param hourBranch 时支数 1~12
@@ -176,7 +176,10 @@ object CastEngine {
         extra: Int = 0
     ): Pair<List<Boolean>, List<Boolean>> {
         require(year > 0 && month in 1..12 && day in 1..31) { "日期不合法" }
-        val upSum = year + month + day
+        // 「年」按干支纪年取年地支序数（1~12，公式 (year-4)%12+1），避免直接使用公元纪年大数
+        // 导致年份主导结果、月日影响被淹没，且与农历日期卦 / 终身卦算法保持一致。
+        val yearBranch = (year - 4) % 12 + 1
+        val upSum = yearBranch + month + day
         val upIdx = mod8(upSum)
         val lowSum = upIdx + hourBranch.coerceIn(1, 12) + extra
         val lowIdx = mod8(lowSum)
