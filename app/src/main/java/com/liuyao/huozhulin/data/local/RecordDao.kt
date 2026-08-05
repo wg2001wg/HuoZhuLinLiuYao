@@ -20,4 +20,8 @@ interface RecordDao {
 
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun getById(id: Long): RecordEntity?
+
+    /** 更新记录的 AI 解析结果与模型（重跑 AI 后落库，供下次直接查看） */
+    @androidx.room.Query("UPDATE records SET aiResult = :aiResult, aiModel = :aiModel WHERE id = :id")
+    suspend fun updateAi(id: Long, aiResult: String, aiModel: String)
 }

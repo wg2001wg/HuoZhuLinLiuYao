@@ -160,6 +160,10 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveCurrent(): kotlinx.coroutines.Job = viewModelScope.launch {
         val r = result.value ?: return@launch
+        // 若当前已有 AI 解析结果，则一并保存到记录中，供下次直接查看
+        val ai = _analysisState.value
+        val aiResult = if (ai is AnalysisState.Success) ai.result.content else null
+        val aiModel = if (ai is AnalysisState.Success) ai.result.model else null
         val rec = RecordEntity(
             timestamp = System.currentTimeMillis(),
             originalName = r.original.name,
@@ -169,7 +173,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             dayGanCn = r.dayGan.cn,
             dayZhiCn = r.dayZhi?.cn,
             monthZhiCn = r.monthZhi?.cn,
-            note = ""
+            note = "",
+            aiResult = aiResult,
+            aiModel = aiModel
         )
         dao.insert(rec)
     }
@@ -272,4 +278,12 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun delete(rec: RecordEntity) = viewModelScope.launch { dao.delete(rec) }
+
+    /** 将重新生成的 AI 解析结果写回该历史记录 */
+    fun refreshRecordAi(rec: RecordEntity) {
+        if (rec.aiResult == null) return
+        viewModelScope.launch {
+            dao.updateAi(rec.id, rec.aiResult, rec.aiModel ?: "")
+        }
+    }
 }

@@ -213,20 +213,10 @@ fun ResultScreen(nav: NavHostController, vm: PaiPanViewModel) {
             }
 
             // ===== 底部按钮 =====
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { /* TODO: 复制排盘文本 */ },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) { Text("复制") }
-                Button(
-                    onClick = { vm.saveCurrent(); saved = true },
-                    modifier = Modifier.weight(1f)
-                ) { Text("保存到历史") }
-            }
+            Button(
+                onClick = { vm.saveCurrent(); saved = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("保存到历史") }
             if (saved) Text("已保存到排盘历史。", color = MaterialTheme.colorScheme.primary)
 
             Spacer(Modifier.height(12.dp))

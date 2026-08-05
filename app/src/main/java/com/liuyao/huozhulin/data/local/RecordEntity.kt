@@ -15,5 +15,8 @@ data class RecordEntity(
     val dayGanCn: String,
     val dayZhiCn: String?,
     val monthZhiCn: String?,
-    val note: String
+    val note: String,
+    // AI 解析结果：保存排盘时若已有解析内容则一并落库，下次打开直接查看，无需重新联网
+    val aiResult: String? = null,
+    val aiModel: String? = null
 )

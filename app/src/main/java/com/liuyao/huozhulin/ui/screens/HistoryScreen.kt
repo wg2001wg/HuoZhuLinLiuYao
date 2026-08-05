@@ -82,7 +82,8 @@ fun HistoryScreen(nav: NavHostController, vm: PaiPanViewModel) {
                         vm.loadFromRecord(rec)
                         nav.navigate("result")
                     },
-                    onDelete = { vm.delete(rec) }
+                    onDelete = { vm.delete(rec) },
+                    onSaved = { vm.refreshRecordAi(it) }
                 )
             }
         }
@@ -98,15 +99,23 @@ private fun HistoryCard(
     baseUrl: String,
     model: String,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onSaved: (RecordEntity) -> Unit
 ) {
     val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
     val time = fmt.format(Date(rec.timestamp))
 
+    // 优先使用记录中已保存的 AI 解析结果，下次打开直接查看，无需重新联网
     var expanded by remember { mutableStateOf(false) }
+    var savedResult by remember { mutableStateOf(rec.aiResult) }
+    var savedModel by remember { mutableStateOf(rec.aiModel) }
     var loading by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf<String?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
+
+    // 已保存内容（落库结果优先，未保存则看本次生成的）
+    val displayText = savedResult ?: resultText
+    val displayModel = savedModel ?: model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
 
     Card(
         modifier = Modifier
@@ -131,7 +140,7 @@ private fun HistoryCard(
                 Row {
                     IconButton(onClick = {
                         expanded = true
-                        if (resultText == null && errorText == null) {
+                        if (displayText == null && errorText == null) {
                             runAiAnalysis({ vm.buildAiPrompt(rec) }, apiKey, baseUrl, model) { state ->
                                 when (state) {
                                     is AiState.Loading -> loading = true
@@ -142,6 +151,15 @@ private fun HistoryCard(
                                     is AiState.Success -> {
                                         loading = false
                                         resultText = state.text
+                                        // 将该记录已有的 AI 结果更新为新生成内容，下次直接查看
+                                        savedResult = state.text
+                                        savedModel = model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
+                                        onSaved(
+                                            rec.copy(
+                                                aiResult = state.text,
+                                                aiModel = savedModel
+                                            )
+                                        )
                                     }
                                     is AiState.Error -> {
                                         loading = false
@@ -164,18 +182,18 @@ private fun HistoryCard(
             }
 
             if (expanded) {
-                                Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(10.dp)
-                    ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(10.dp)
+                ) {
                     Text(
-                        "AI解析（${model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }}）",
+                        "AI解析（${displayModel}）",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.secondary
                     )
@@ -208,8 +226,8 @@ private fun HistoryCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
-                        resultText != null -> MarkdownText(
-                            resultText!!,
+                        displayText != null -> MarkdownText(
+                            displayText,
                             baseStyle = MaterialTheme.typography.bodyMedium
                         )
                         else -> Text("点击上方图标开始 AI解析。", style = MaterialTheme.typography.bodySmall)
@@ -219,6 +237,14 @@ private fun HistoryCard(
                         Button(onClick = { nav.navigate("settings") }) {
                             Text("前往 AI解析设置")
                         }
+                    }
+                    if (savedResult != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "（已保存，离线可查看）",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
                 }
             }
