@@ -201,7 +201,7 @@ private fun PlateRow(
                 Box(Modifier.width(38.dp)) {
                     YaoBar(
                         yang = changed.yang,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
