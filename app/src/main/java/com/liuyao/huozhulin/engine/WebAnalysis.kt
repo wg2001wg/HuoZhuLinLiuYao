@@ -9,21 +9,21 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * 联网解析：调用 DeepSeek 开放平台的免费大模型（chat 模型）对卦象进行智能解读。
+ * 联网解析：调用智谱 GLM-4.7-Flash 免费大模型对卦象进行智能解读。
  *
- * DeepSeek 接口与 OpenAI 兼容：
- *   POST https://api.deepseek.com/chat/completions
+ * 智谱 GLM 接口与 OpenAI 兼容：
+ *   POST https://open.bigmodel.cn/api/paas/v4/chat/completions
  *   Authorization: Bearer <API_KEY>
  *
- * 如需自定义（例如兼容 OpenAI 格式的其它免费模型），可通过 baseUrl 参数覆盖。
+ * 如需自定义（例如其它兼容 OpenAI 格式的模型），可通过 baseUrl 参数覆盖。
  */
 object WebAnalysis {
 
-    const val DEFAULT_BASE_URL = "https://api.deepseek.com/chat/completions"
-    const val DEFAULT_MODEL = "deepseek-chat"
+    const val DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    const val DEFAULT_MODEL = "glm-4.7-flash"
 
-    /** 内置免费 API Key（用户未配置时自动使用） */
-    const val FALLBACK_API_KEY = "sk-5d4c3b2a1e0f9d8c7b6a5f4e3d2c1b0a9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"
+    /** 默认 API Key（用户未配置时使用，可在设置页覆盖） */
+    const val DEFAULT_API_KEY = "c8911f7e1e064cada93094a1b89fed80.PB2X8egYZFbiF35b"
 
     /** 联网解析结果包装 */
     data class AnalysisResult(
@@ -32,8 +32,13 @@ object WebAnalysis {
         val isFallback: Boolean = false  // 是否为本地兜底（无 Key / 失败时）
     )
 
-    /** 将排盘结果整理成给大模型的提示文本 */
-    fun buildPrompt(result: PaiPanResult): String {
+    /**
+     * 将排盘结果整理成给大模型的提示文本。
+     * @param result  排盘结果
+     * @param guaZhu  卦主（可空，非空时一并告知模型）
+     * @param wenShi  问事（可空，非空且非「未填写」时一并告知模型，使解读更具针对性）
+     */
+    fun buildPrompt(result: PaiPanResult, guaZhu: String? = null, wenShi: String? = null): String {
         val sb = StringBuilder()
         sb.append("我是一位研习火珠林六爻（纳甲筮法）的爱好者，请基于传统六爻理论，对我的起卦结果做专业、客观的分析与建议。\n\n")
         sb.append("【排盘信息】\n")
@@ -43,6 +48,15 @@ object WebAnalysis {
         if (result.dayZhi != null) sb.append("日辰：干${result.dayGan}支${result.dayZhi.name}\n")
         if (result.monthZhi != null) sb.append("月建：${result.monthZhi.name}月\n")
         if (result.kongWang.isNotEmpty()) sb.append("旬空：${result.kongWang.joinToString("、") { it.name }}\n")
+
+        val gz = guaZhu?.trim()?.takeIf { it.isNotBlank() }
+        val ws = wenShi?.trim()?.takeIf { it.isNotBlank() && it != "未填写" }
+        if (gz != null || ws != null) {
+            sb.append("\n【所问之事】\n")
+            if (gz != null) sb.append("卦主：$gz\n")
+            if (ws != null) sb.append("问事：$ws\n")
+        }
+
         sb.append("\n【六爻明细（自下而上：初爻→上爻）】\n")
         for (i in result.original.lines.indices) {
             val l = result.original.lines[i]
@@ -58,7 +72,12 @@ object WebAnalysis {
                         (if (l.moving) "（动爻）" else "") + arrow + "\n"
             )
         }
-        sb.append("\n请结合世应、用神、六亲、六神、动变、日辰月建与旬空，分析此事吉凶趋势，并给出建议。回答请使用简体中文，条理清晰、通俗易懂。")
+        if (ws != null) {
+            sb.append("\n本次所问之事为「$ws」，请重点围绕此事，结合世应、用神、六亲、六神、动变、日辰月建与旬空，分析其吉凶趋势，并给出具体建议。")
+        } else {
+            sb.append("\n请结合世应、用神、六亲、六神、动变、日辰月建与旬空，分析此事吉凶趋势，并给出建议。")
+        }
+        sb.append("回答请使用简体中文，条理清晰、通俗易懂。")
         return sb.toString()
     }
 

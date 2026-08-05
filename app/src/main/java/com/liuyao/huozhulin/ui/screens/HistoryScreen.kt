@@ -217,8 +217,8 @@ private fun runAiAnalysis(
     baseUrl: String,
     onState: (AiState) -> Unit
 ) {
-    val key = apiKey.trim()
-    val useKey = if (key.isBlank()) WebAnalysis.FALLBACK_API_KEY else key
+    // 未配置 Key → 使用内置默认 Key
+    val key = apiKey.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
     val prompt = buildPrompt()
     if (prompt == null) {
         onState(AiState.Error("该记录缺少完整排盘数据，无法重建卦象。"))
@@ -227,7 +227,7 @@ private fun runAiAnalysis(
     onState(AiState.Loading)
     CoroutineScope(Dispatchers.Main).launch {
         val text = withContext(Dispatchers.IO) {
-            WebAnalysis.analyze(useKey, prompt, baseUrl.ifBlank { WebAnalysis.DEFAULT_BASE_URL })
+            WebAnalysis.analyze(key, prompt, baseUrl.ifBlank { WebAnalysis.DEFAULT_BASE_URL })
         }
         if (text.startsWith("请求失败") || text.startsWith("联网解析出错")) {
             onState(AiState.Error(text))

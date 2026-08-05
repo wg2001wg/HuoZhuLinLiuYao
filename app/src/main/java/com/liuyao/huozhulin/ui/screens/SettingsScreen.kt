@@ -57,13 +57,13 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "AI 解读模型：DeepSeek（免费）",
+                "AI 解读模型：智谱 GLM-4.7-Flash（免费）",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                "在 DeepSeek 开放平台（platform.deepseek.com）注册并创建 API Key 后，粘贴到下方即可。\n" +
-                        "不填也可使用内置免费 Key 直接体验 AI 解读功能。\n" +
+                "默认已内置可用的智谱 GLM-4.7-Flash 免费 Key，可直接使用 AI 解读；\n" +
+                        "如需更换，可在智谱开放平台（open.bigmodel.cn）注册并创建自己的 API Key 后粘贴到下方覆盖。\n" +
                         "应用仅将卦象排盘文本发送给模型用于解读，不会上传其它信息。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline

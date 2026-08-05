@@ -98,37 +98,22 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
      */
     /**
      * 由 UI（结果页/历史页的「AI 解读」按钮）触发联网解析。
-     * 调用 DeepSeek 免费大模型对卦象进行解读。
-     * 用户未配置 API Key 时，自动使用内置的免费默认 Key。
+     * 调用智谱 GLM-4.7-Flash 免费大模型对卦象进行解读。
+     * 用户未配置 Key 时，自动使用内置默认 Key（可在设置页覆盖）。
      */
     fun fetchAnalysis() {
         val r = result.value ?: return
         if (_analysisState.value is AnalysisState.Loading) return
-        val key = _apiKey.value.trim()
-        if (key.isBlank()) {
-            // 未配置 Key → 使用内置免费 Key 兜底
-            _analysisState.value = AnalysisState.Loading
-            val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
-            val prompt = WebAnalysis.buildPrompt(r)
-            viewModelScope.launch {
-                val res = kotlin.runCatching {
-                    withContext(Dispatchers.IO) { WebAnalysis.analyze(WebAnalysis.FALLBACK_API_KEY, prompt, url) }
-                }
-                if (res.isSuccess) {
-                    _analysisState.value = AnalysisState.Success(
-                        AnalysisResult(content = res.getOrThrow(), model = "${WebAnalysis.DEFAULT_MODEL}（内置免费）")
-                    )
-                } else {
-                    _analysisState.value = AnalysisState.Error(
-                        res.exceptionOrNull()?.message ?: "未知错误"
-                    )
-                }
-            }
-            return
-        }
+        // 未配置 Key → 使用内置默认 Key
+        val key = _apiKey.value.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
+        // 组装提示词：将卦主与问事一并发送给 AI（问事为空/未填写则不发送）
+        val prompt = WebAnalysis.buildPrompt(
+            r,
+            guaZhu = guaZhu.value,
+            wenShi = wenShi.value
+        )
         _analysisState.value = AnalysisState.Loading
         val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
-        val prompt = WebAnalysis.buildPrompt(r)
         viewModelScope.launch {
             val res = kotlin.runCatching {
                 withContext(Dispatchers.IO) { WebAnalysis.analyze(key, prompt, url) }
