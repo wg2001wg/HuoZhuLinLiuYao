@@ -28,6 +28,25 @@ object WebAnalysis {
     /** 默认 API Key（用户未配置时使用，可在设置页覆盖） */
     const val DEFAULT_API_KEY = "c8911f7e1e064cada93094a1b89fed80.PB2X8egYZFbiF35b"
 
+    /** 建立连接超时（毫秒） */
+    private const val CONNECT_TIMEOUT_MS = 30_000
+
+    /**
+     * 读取超时（毫秒）。
+     * 实测免费共享额度在高峰期排队严重（一次极短回复也可能耗时 2 分钟以上），
+     * 解卦这类长文本输出更久，故放宽到 5 分钟，避免正常生成中途被判为「超时」。
+     */
+    private const val READ_TIMEOUT_MS = 300_000
+
+    /**
+     * 遇到 429 / 5xx 等临时性错误时的最大尝试次数。
+     * 注意：超时不参与重试（单次已等待很久，再重试会让用户等待过长）。
+     */
+    private const val MAX_RETRY = 2
+
+    /** 重试基础退避间隔（毫秒），按次数递增 */
+    private const val RETRY_DELAY_MS = 2_000L
+
     /** AI 解析结果包装 */
     data class AnalysisResult(
         val content: String,        // 模型返回的正文
@@ -103,9 +122,36 @@ object WebAnalysis {
      * @param model     可自定义模型名，默认 [DEFAULT_MODEL]
      */
     fun analyze(apiKey: String, prompt: String, baseUrl: String = DEFAULT_BASE_URL, model: String = DEFAULT_MODEL): String {
-        val url = URL(baseUrl.trim().ifBlank { DEFAULT_BASE_URL })
+        val useUrl = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
         val useModel = model.trim().ifBlank { DEFAULT_MODEL }
         val useKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
+
+        // 免费额度为共享并发，高峰期常返回 429（请求过于频繁）。
+        // 此类可恢复错误自动退避重试，避免用户看到无谓的失败。
+        var lastError = ""
+        repeat(MAX_RETRY) { attempt ->
+            val result = requestOnce(useKey, prompt, useUrl, useModel)
+            if (!result.retryable) return result.text
+            lastError = result.text
+            if (attempt < MAX_RETRY - 1) {
+                try {
+                    Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return lastError
+                }
+            }
+        }
+        return lastError
+    }
+
+    /** 单次请求结果；[retryable] 为 true 表示属于可重试的临时性错误 */
+    private data class Attempt(val text: String, val retryable: Boolean = false)
+
+    private fun requestOnce(apiKey: String, prompt: String, baseUrl: String, model: String): Attempt {
+        val url = URL(baseUrl)
+        val useModel = model
+        val useKey = apiKey
         val conn = url.openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
@@ -113,8 +159,8 @@ object WebAnalysis {
             conn.setRequestProperty("Authorization", "Bearer $useKey")
             conn.setRequestProperty("Accept", "application/json")
             conn.doOutput = true
-            conn.connectTimeout = 30000
-            conn.readTimeout = 60000
+            conn.connectTimeout = CONNECT_TIMEOUT_MS
+            conn.readTimeout = READ_TIMEOUT_MS
 
             val body = JSONObject().apply {
                 put("model", useModel)
@@ -126,6 +172,12 @@ object WebAnalysis {
                 })
                 put("temperature", 0.7)
                 put("stream", false)
+                // 限制输出长度：免费模型生成越长越慢，1200 tokens 足够覆盖五段式解卦
+                put("max_tokens", 1200)
+                // GLM-4.x 系列默认开启「思考模式」，会先生成大量隐藏推理内容，
+                // 导致耗时翻倍且极易超时；此处显式关闭，仅输出正式解卦结果。
+                // 该字段对不支持的模型服务会被忽略，不影响兼容性。
+                put("thinking", JSONObject().apply { put("type", "disabled") })
             }
             conn.outputStream.use { os ->
                 os.write(body.toString().toByteArray(Charsets.UTF_8))
@@ -137,12 +189,32 @@ object WebAnalysis {
             } else {
                 conn.errorStream?.bufferedReader(Charsets.UTF_8)?.readText() ?: ""
             }
-            if (code !in 200..299) {
-                return "请求失败（HTTP $code）：${extractError(respText)}"
+            when {
+                code == 429 -> Attempt(
+                    "AI解析出错：请求过于频繁（429）。免费额度为共享并发，" +
+                            "请稍候重试，或在设置页填入自己的 API Key。",
+                    retryable = true
+                )
+                code in 500..599 -> Attempt(
+                    "AI解析出错：模型服务暂时不可用（HTTP $code），请稍后重试。",
+                    retryable = true
+                )
+                code == 401 || code == 403 -> Attempt(
+                    "AI解析出错：API Key 无效或无权限（HTTP $code），请在设置页检查 Key。"
+                )
+                code !in 200..299 -> Attempt("请求失败（HTTP $code）：${extractError(respText)}")
+                else -> Attempt(parseContent(respText))
             }
-            parseContent(respText)
+        } catch (e: java.net.SocketTimeoutException) {
+            // 不自动重试：单次已等待数分钟，再重试会让用户等待过长，交由用户手动点「重试」
+            Attempt(
+                "AI解析出错：请求超时。免费模型高峰期排队较久，请稍后重试；" +
+                        "也可在设置页填入自己的 API Key 或更换更快的模型。"
+            )
+        } catch (e: java.net.UnknownHostException) {
+            Attempt("AI解析出错：无法连接服务器，请检查网络后重试。")
         } catch (e: Exception) {
-            "AI解析出错：${e.message}"
+            Attempt("AI解析出错：${e.message}")
         } finally {
             conn.disconnect()
         }
@@ -153,9 +225,14 @@ object WebAnalysis {
             val json = JSONObject(respText)
             val choices = json.getJSONArray("choices")
             if (choices.length() == 0) return "模型未返回内容。"
-            choices.getJSONObject(0).getJSONObject("message").getString("content")
+            val message = choices.getJSONObject(0).getJSONObject("message")
+            val content = message.optString("content", "")
+            if (content.isNotBlank()) return content
+            // 个别推理模型只填充 reasoning_content，正文为空时回退取用
+            val reasoning = message.optString("reasoning_content", "")
+            if (reasoning.isNotBlank()) reasoning else "模型未返回内容。"
         } catch (e: Exception) {
-            "解析返回结果失败：${e.message}\n原始返回：$respText"
+            "解析返回结果失败：${e.message}\n原始返回：${respText.take(500)}"
         }
     }
 

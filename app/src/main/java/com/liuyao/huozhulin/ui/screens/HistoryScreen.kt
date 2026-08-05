@@ -181,7 +181,10 @@ private fun HistoryCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                            Text("正在联网 AI 解析…", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "正在联网 AI 解析，约需 1~2 分钟…",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         errorText != null -> Text(
                             "AI解析失败：$errorText",

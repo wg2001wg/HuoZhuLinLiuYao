@@ -378,7 +378,10 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                    Text("正在联网 AI 解析…", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "正在联网 AI 解析，约需 1~2 分钟，请耐心等待…",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
             is AnalysisState.Error -> {
