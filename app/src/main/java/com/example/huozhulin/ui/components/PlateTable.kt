@@ -285,7 +285,7 @@ private fun MovingMarker(original: LineInfo) {
  */
 @Composable
 private fun YaoBar(yang: Boolean, color: Color, modifier: Modifier = Modifier) {
-    val barHeight = 13.dp
+    val barHeight = 8.dp
     if (yang) {
         Box(
             modifier = modifier
