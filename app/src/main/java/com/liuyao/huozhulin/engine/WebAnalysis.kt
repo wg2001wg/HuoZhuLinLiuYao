@@ -65,9 +65,9 @@ object WebAnalysis {
     /**
      * 读取超时（毫秒）。
      * 实测免费共享额度在高峰期排队严重（一次极短回复也可能耗时 2 分钟以上），
-     * 解卦这类长文本输出更久，故放宽到 5 分钟，避免正常生成中途被判为「超时」。
+     * 解卦这类长文本输出更久，故放宽到 10 分钟，避免正常生成中途被判为「超时」。
      */
-    private const val READ_TIMEOUT_MS = 300_000
+    private const val READ_TIMEOUT_MS = 600_000
 
     /**
      * 遇到 429 / 5xx 等临时性错误时的最大尝试次数。
@@ -185,24 +185,37 @@ object WebAnalysis {
         val useKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
 
         // 免费额度为共享并发，高峰期常返回 429（请求过于频繁）。可恢复错误自动退避重试。
+        // 若流式输出中途已收到部分内容（多为读超时/网络抖动），则不报错中止，
+        // 直接收尾并保留已生成文本，避免「逐字输出未完成就停止」。
         var lastError = ""
+        var received = false
         repeat(MAX_RETRY) { attempt ->
-            val result = requestStream(useKey, prompt, useUrl, useModel, onDelta)
-            if (!result.retryable) { onDone?.invoke(); return }
-            lastError = result.text
-            if (attempt < MAX_RETRY - 1) {
-                try {
-                    Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    onError(lastError)
-                    onDone?.invoke()
-                    return
+            val result = requestStream(useKey, prompt, useUrl, useModel,
+                onDelta = { piece ->
+                    received = true
+                    onDelta(piece)
                 }
+            )
+            if (result.text.isEmpty()) { onDone?.invoke(); return }   // 正常结束（收到 [DONE]）
+            if (result.retryable) {                                    // 429/5xx：退避后重试
+                lastError = result.text
+                if (attempt < MAX_RETRY - 1) {
+                    try {
+                        Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        if (received) onDone?.invoke() else onError(lastError)
+                        return
+                    }
+                }
+                return@repeat
             }
+            // 不可重试错误：若已收到内容则静默收尾（保留输出），否则报错
+            if (received) { onDone?.invoke() } else { onError(result.text) }
+            onDone?.invoke()
+            return
         }
-        onError(lastError)
-        onDone?.invoke()
+        if (received) onDone?.invoke() else onError(lastError)
     }
 
     /** 单次请求结果；[retryable] 为 true 表示属于可重试的临时性错误 */

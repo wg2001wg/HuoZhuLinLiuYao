@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.liuyao.huozhulin.data.local.RecordEntity
 import com.liuyao.huozhulin.engine.WebAnalysis
+import com.liuyao.huozhulin.ui.components.MarkdownText
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -207,9 +208,9 @@ private fun HistoryCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
-                        resultText != null -> Text(
+                        resultText != null -> MarkdownText(
                             resultText!!,
-                            style = MaterialTheme.typography.bodyMedium
+                            baseStyle = MaterialTheme.typography.bodyMedium
                         )
                         else -> Text("点击上方图标开始 AI解析。", style = MaterialTheme.typography.bodySmall)
                     }
