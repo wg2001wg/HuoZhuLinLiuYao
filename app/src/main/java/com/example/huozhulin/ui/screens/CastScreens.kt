@@ -429,7 +429,7 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
                         // 需要农历年支数；这里先用公历转农历得到农历年月日
                         val lunar = LunarCalendar.toLunar(y, m, d, h)
                         CastEngine.lunarDateCast(
-                            lunarYearBranchIndex = (lunar.year - 4) % 12 + 1,
+                            lunarYear = lunar.year,
                             lunarMonth = lunar.month,
                             lunarDay = lunar.day,
                             hourBranch = DiZhi.forHour(h).ordinal + 1,

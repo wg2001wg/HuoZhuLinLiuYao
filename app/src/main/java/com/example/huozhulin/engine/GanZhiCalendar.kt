@@ -3,6 +3,10 @@ package com.example.huozhulin.engine
 import com.example.huozhulin.data.model.DiZhi
 import com.example.huozhulin.data.model.TianGan
 import java.util.Calendar
+import java.util.TimeZone
+
+/** 干支推算统一使用中国标准时间（北京时间），避免依赖设备时区导致日/时柱错位 */
+private val CST = TimeZone.getTimeZone("Asia/Shanghai")
 
 /** 一个干支组合（天干 + 地支） */
 data class GanZhi(val gan: TianGan, val zhi: DiZhi) {
@@ -61,12 +65,12 @@ object GanZhiCalendar {
         return GanZhi(TianGan.entries[seq % 10], DiZhi.entries[seq % 12])
     }
 
-    /** 日柱：以 2000-01-01（戊午日，序号 54）为基准按天数差推算 */
+    /** 日柱：以 2000-01-01（戊午日，序号 54）为基准按天数差推算（北京时间，避免设备时区导致日柱错位） */
     private fun dayGanZhi(y: Int, m: Int, d: Int): GanZhi {
-        val base = Calendar.getInstance().apply {
+        val base = Calendar.getInstance(CST).apply {
             set(2000, Calendar.JANUARY, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val target = Calendar.getInstance().apply {
+        val target = Calendar.getInstance(CST).apply {
             set(y, m - 1, d, 0, 0, 0); set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         val diffDays = ((target - base) / (24L * 3600 * 1000)).toInt()
@@ -112,9 +116,9 @@ object GanZhiCalendar {
         return FourPillars(yg, mg, dg, hg)
     }
 
-    /** 取当前时刻的四柱 */
+    /** 取当前时刻（北京时间）的四柱 */
     fun fourPillarsNow(): FourPillars {
-        val c = Calendar.getInstance()
+        val c = Calendar.getInstance(CST)
         return fromDateTime(
             c.get(Calendar.YEAR),
             c.get(Calendar.MONTH) + 1,
@@ -124,9 +128,9 @@ object GanZhiCalendar {
         )
     }
 
-    /** 由时间戳（毫秒）还原四柱，用于历史记录回看 */
+    /** 由时间戳（毫秒）还原四柱（按北京时间解读），用于历史记录回看 */
     fun fromTimestamp(ts: Long): FourPillars {
-        val c = Calendar.getInstance().apply { timeInMillis = ts }
+        val c = Calendar.getInstance(CST).apply { timeInMillis = ts }
         return fromDateTime(
             c.get(Calendar.YEAR),
             c.get(Calendar.MONTH) + 1,

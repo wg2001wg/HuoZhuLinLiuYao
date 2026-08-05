@@ -157,12 +157,13 @@ object CastEngine {
     /* ==================== 5. 日期卦 ==================== */
 
     /**
-     * 日期卦（阳历）。
-     * 上卦 = (年地支序数 + 月 + 日) 除 8 余数；
-     * 下卦 = (上卦总数 + 时支数 + 附加数) 除 8 余数；
-     * 动爻 = 下卦总数 除 6 余数。
+     * 日期卦（阳历，梅花易数时间起卦）。
+     * 上卦 = (年 + 月 + 日) 除 8 余数；
+     * 下卦 = (年 + 月 + 日 + 时支数 + 附加数) 除 8 余数；
+     * 动爻 = (年 + 月 + 日 + 时支数 + 附加数) 除 6 余数。
+     * 其中「年」直接使用公元纪年数字（如 2026）参与运算。
      *
-     * @param year  阳历年（内部转换为年地支序数 1~12 参与运算）
+     * @param year  阳历年（公元年，如 2026）
      * @param month 阳历月
      * @param day   阳历日
      * @param hourBranch 时支数 1~12
@@ -176,14 +177,12 @@ object CastEngine {
         extra: Int = 0
     ): Pair<List<Boolean>, List<Boolean>> {
         require(year > 0 && month in 1..12 && day in 1..31) { "日期不合法" }
-        // 「年」按干支纪年取年地支序数（1~12，公式 (year-4)%12+1），避免直接使用公元纪年大数
-        // 导致年份主导结果、月日影响被淹没，且与农历日期卦 / 终身卦算法保持一致。
-        val yearBranch = (year - 4) % 12 + 1
-        val upSum = yearBranch + month + day
-        val upIdx = mod8(upSum)
-        val lowSum = upIdx + hourBranch.coerceIn(1, 12) + extra
-        val lowIdx = mod8(lowSum)
-        val movingPos = mod6(lowIdx) - 1
+        val hb = hourBranch.coerceIn(1, 12)
+        val upTotal = year + month + day
+        val allTotal = upTotal + hb + extra
+        val upIdx = mod8(upTotal)
+        val lowIdx = mod8(allTotal)
+        val movingPos = mod6(allTotal) - 1
 
         val up = trigramByIndex(upIdx)
         val low = trigramByIndex(lowIdx)
@@ -193,24 +192,26 @@ object CastEngine {
     }
 
     /**
-     * 日期卦（农历）。
-     * 上卦 = (农历年支数 + 农历月 + 农历日) 除 8 余数；
-     * 下卦 = (上卦总数 + 时支数 + 附加数) 除 8 余数；
-     * 动爻 = 下卦总数 除 6 余数。
+     * 日期卦（农历，梅花易数时间起卦）。
+     * 上卦 = (农历年 + 农历月 + 农历日) 除 8 余数；
+     * 下卦 = (农历年 + 农历月 + 农历日 + 时支数 + 附加数) 除 8 余数；
+     * 动爻 = (农历年 + 农历月 + 农历日 + 时支数 + 附加数) 除 6 余数。
+     * 「农历年」直接使用公元纪年数字（如 2026）参与运算。
      */
     fun lunarDateCast(
-        lunarYearBranchIndex: Int,
+        lunarYear: Int,
         lunarMonth: Int,
         lunarDay: Int,
         hourBranch: Int,
         extra: Int = 0
     ): Pair<List<Boolean>, List<Boolean>> {
         require(lunarMonth in 1..12 && lunarDay in 1..30) { "农历月日不合法" }
-        val upSum = lunarYearBranchIndex.coerceIn(1, 12) + lunarMonth + lunarDay
-        val upIdx = mod8(upSum)
-        val lowSum = upIdx + hourBranch.coerceIn(1, 12) + extra
-        val lowIdx = mod8(lowSum)
-        val movingPos = mod6(lowIdx) - 1
+        val hb = hourBranch.coerceIn(1, 12)
+        val upTotal = lunarYear + lunarMonth + lunarDay
+        val allTotal = upTotal + hb + extra
+        val upIdx = mod8(upTotal)
+        val lowIdx = mod8(allTotal)
+        val movingPos = mod6(allTotal) - 1
 
         val up = trigramByIndex(upIdx)
         val low = trigramByIndex(lowIdx)
