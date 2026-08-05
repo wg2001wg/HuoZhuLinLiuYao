@@ -28,6 +28,8 @@ import kotlinx.coroutines.withContext
 sealed interface AnalysisState {
     data object Idle : AnalysisState
     data object Loading : AnalysisState
+    /** 流式生成中：content 为已接收到的增量累积文本 */
+    data class Streaming(val content: String) : AnalysisState
     data class Success(val result: AnalysisResult) : AnalysisState
     data class Error(val message: String) : AnalysisState
 }
@@ -184,6 +186,73 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         dayGan.value = TianGan.entries.first { it.cn == rec.dayGanCn }
         dayZhi.value = rec.dayZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
         monthZhi.value = rec.monthZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
+    }
+
+    /**
+     * 流式（逐字/逐段）发起 AI 解析：模型每生成一段，UI 即时显示，避免等待整段完成。
+     * 与 [fetchAnalysis] 互斥，仅在非进行中时触发。
+     */
+    fun fetchAnalysisStream() {
+        val r = result.value ?: return
+        if (_analysisState.value is AnalysisState.Loading ||
+            _analysisState.value is AnalysisState.Streaming
+        ) return
+        val key = _apiKey.value.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
+        val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
+        val mdl = _model.value.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
+        val prompt = WebAnalysis.buildPrompt(r, guaZhu = guaZhu.value, wenShi = wenShi.value)
+
+        _analysisState.value = AnalysisState.Loading
+        viewModelScope.launch {
+            val sb = StringBuilder()
+            val err = kotlin.runCatching {
+                withContext(Dispatchers.IO) {
+                    WebAnalysis.analyzeStream(
+                        key, prompt, url, mdl,
+                        onDelta = { piece ->
+                            sb.append(piece)
+                            // 首次收到增量即从 Loading 切到 Streaming，后续持续追加
+                            if (_analysisState.value !is AnalysisState.Streaming) {
+                                _analysisState.value = AnalysisState.Streaming(sb.toString())
+                            } else {
+                                _analysisState.value = AnalysisState.Streaming(sb.toString())
+                            }
+                        },
+                        onError = { msg ->
+                            if (sb.isEmpty()) {
+                                _analysisState.value = AnalysisState.Error(msg)
+                            } else {
+                                // 已有部分内容则保留已生成部分，并标注中断
+                                _analysisState.value = AnalysisState.Success(
+                                    AnalysisResult(
+                                        content = sb.toString() + "\n\n（解析中断：$msg）",
+                                        model = mdl
+                                    )
+                                )
+                            }
+                        }
+                    )
+                }
+            }.exceptionOrNull()
+            if (err != null) {
+                if (sb.isEmpty()) {
+                    _analysisState.value = AnalysisState.Error(err.message ?: "未知错误")
+                } else {
+                    _analysisState.value = AnalysisState.Success(
+                        AnalysisResult(content = sb.toString(), model = mdl)
+                    )
+                }
+                return@launch
+            }
+            // 正常完成（非 onError 中断）：有内容则成功，无内容则报错
+            if (sb.isEmpty()) {
+                _analysisState.value = AnalysisState.Error("模型未返回内容。")
+            } else {
+                _analysisState.value = AnalysisState.Success(
+                    AnalysisResult(content = sb.toString(), model = mdl)
+                )
+            }
+        }
     }
 
     /**

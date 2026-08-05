@@ -129,6 +129,9 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
                                     if (urlInput.trim().isEmpty()) {
                                         urlInput = opt.baseUrl
                                     }
+                                    if (keyInput.trim().isEmpty() && opt.apiKey.isNotBlank()) {
+                                        keyInput = opt.apiKey
+                                    }
                                     modelMenuExpanded = false
                                 }
                             )

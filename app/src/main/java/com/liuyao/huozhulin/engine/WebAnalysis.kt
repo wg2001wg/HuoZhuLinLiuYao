@@ -19,14 +19,19 @@ import java.net.URLEncoder
  */
 object WebAnalysis {
 
-    /** 预设模型选项：显示名 + 实际模型名 + 对应接口地址 */
-    data class ModelOption(val display: String, val model: String, val baseUrl: String)
+    /** 预设模型选项：显示名 + 实际模型名 + 对应接口地址 + 推荐 API Key（可选，选定时自动填充） */
+    data class ModelOption(
+        val display: String,
+        val model: String,
+        val baseUrl: String,
+        val apiKey: String = ""
+    )
 
-    /** 可用模型列表：选择后自动填充对应的兼容 OpenAI 格式的接口地址 */
+    /** 可用模型列表：选择后自动填充对应的兼容 OpenAI 格式的接口地址与推荐 Key（若用户未手动填写） */
     val MODEL_OPTIONS: List<ModelOption> = listOf(
-        ModelOption("智谱 GLM-4.7-Flash", "GLM-4.7-Flash", "https://open.bigmodel.cn/api/paas/v4/"),
-        ModelOption("智谱 GLM-4.6", "GLM-4.6", "https://open.bigmodel.cn/api/paas/v4/"),
-        ModelOption("智谱 GLM-4-Plus", "glm-4-plus", "https://open.bigmodel.cn/api/paas/v4/"),
+        ModelOption("智谱 GLM-4.7-Flash", "GLM-4.7-Flash", "https://open.bigmodel.cn/api/paas/v4/", DEFAULT_API_KEY),
+        ModelOption("智谱 GLM-4.6", "GLM-4.6", "https://open.bigmodel.cn/api/paas/v4/", DEFAULT_API_KEY),
+        ModelOption("智谱 GLM-4-Plus", "glm-4-plus", "https://open.bigmodel.cn/api/paas/v4/", DEFAULT_API_KEY),
         ModelOption("OpenAI GPT-4o", "gpt-4o", "https://api.openai.com/v1/"),
         ModelOption("OpenAI GPT-4o-mini", "gpt-4o-mini", "https://api.openai.com/v1/"),
         ModelOption("DeepSeek Chat", "deepseek-chat", "https://api.deepseek.com/v1/"),
@@ -141,34 +146,63 @@ object WebAnalysis {
     }
 
     /**
-     * 联网请求大模型进行 AI 解析。
-     * @param apiKey    API Key（从设置页保存的 DataStore 读取，为空时由调用方回落到 [DEFAULT_API_KEY]）
+     * 联网请求大模型进行 AI 解析（一次性返回完整文本）。
+     * @return 解析文本；出错时返回以「请求失败」或「AI解析出错」开头的提示字符串
+     */
+    fun analyze(apiKey: String, prompt: String, baseUrl: String = DEFAULT_BASE_URL, model: String = DEFAULT_MODEL): String {
+        val sb = StringBuilder()
+        var error: String? = null
+        analyzeStream(apiKey, prompt, baseUrl, model,
+            onDelta = { sb.append(it) },
+            onError = { error = it }
+        )
+        return error ?: sb.toString()
+    }
+
+    /**
+     * 流式（逐字/逐段）联网请求大模型进行 AI 解析，结果通过 [onDelta] 实时回调，
+     * 实现「边生成边显示」的效果，避免用户长时间等待空白。
+     *
+     * @param apiKey    API Key（为空时回落到 [DEFAULT_API_KEY]）
      * @param prompt    提示文本（可由 [buildPrompt] 生成）
      * @param baseUrl   可自定义接口地址（兼容 OpenAI 格式），默认智谱开放平台
      * @param model     可自定义模型名，默认 [DEFAULT_MODEL]
+     * @param onDelta   每收到一段增量文本时回调（可能为多个内容片段）
+     * @param onError   当请求彻底失败（不可恢复或重试耗尽）时回调错误提示
+     * @param onDone    全部完成时回调（无论成功与否，用于收尾，可空）
      */
-    fun analyze(apiKey: String, prompt: String, baseUrl: String = DEFAULT_BASE_URL, model: String = DEFAULT_MODEL): String {
+    fun analyzeStream(
+        apiKey: String,
+        prompt: String,
+        baseUrl: String = DEFAULT_BASE_URL,
+        model: String = DEFAULT_MODEL,
+        onDelta: (String) -> Unit,
+        onError: (String) -> Unit,
+        onDone: (() -> Unit)? = null
+    ) {
         val useUrl = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
         val useModel = model.trim().ifBlank { DEFAULT_MODEL }
         val useKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
 
-        // 免费额度为共享并发，高峰期常返回 429（请求过于频繁）。
-        // 此类可恢复错误自动退避重试，避免用户看到无谓的失败。
+        // 免费额度为共享并发，高峰期常返回 429（请求过于频繁）。可恢复错误自动退避重试。
         var lastError = ""
         repeat(MAX_RETRY) { attempt ->
-            val result = requestOnce(useKey, prompt, useUrl, useModel)
-            if (!result.retryable) return result.text
+            val result = requestStream(useKey, prompt, useUrl, useModel, onDelta)
+            if (!result.retryable) { onDone?.invoke(); return }
             lastError = result.text
             if (attempt < MAX_RETRY - 1) {
                 try {
                     Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    return lastError
+                    onError(lastError)
+                    onDone?.invoke()
+                    return
                 }
             }
         }
-        return lastError
+        onError(lastError)
+        onDone?.invoke()
     }
 
     /** 单次请求结果；[retryable] 为 true 表示属于可重试的临时性错误 */
@@ -233,6 +267,100 @@ object WebAnalysis {
             }
         } catch (e: java.net.SocketTimeoutException) {
             // 不自动重试：单次已等待数分钟，再重试会让用户等待过长，交由用户手动点「重试」
+            Attempt(
+                "AI解析出错：请求超时。免费模型高峰期排队较久，请稍后重试；" +
+                        "也可在设置页填入自己的 API Key 或更换更快的模型。"
+            )
+        } catch (e: java.net.UnknownHostException) {
+            Attempt("AI解析出错：无法连接服务器，请检查网络后重试。")
+        } catch (e: Exception) {
+            Attempt("AI解析出错：${e.message}")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * 单次流式请求：以 SSE 方式逐行读取响应，将每个 chunk 的增量内容通过 [onDelta] 实时回调。
+     * [Attempt.retryable] 为 true 表示属于可重试的临时性错误（429 / 5xx）。
+     */
+    private fun requestStream(
+        apiKey: String,
+        prompt: String,
+        baseUrl: String,
+        model: String,
+        onDelta: (String) -> Unit
+    ): Attempt {
+        val url = URL(baseUrl)
+        val conn = url.openConnection() as HttpURLConnection
+        return try {
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("Accept", "text/event-stream")
+            conn.doOutput = true
+            conn.connectTimeout = CONNECT_TIMEOUT_MS
+            // 流式读取期间保持连接打开，按行读取；使用较长读超时容忍生成停顿
+            conn.readTimeout = READ_TIMEOUT_MS
+
+            val body = JSONObject().apply {
+                put("model", model)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", prompt)
+                    })
+                })
+                put("temperature", 0.7)
+                put("stream", true)
+                put("max_tokens", 1200)
+                // 关闭 GLM 思考模式，避免大量隐藏推理内容拖慢首字与整体耗时
+                put("thinking", JSONObject().apply { put("type", "disabled") })
+            }
+            conn.outputStream.use { os ->
+                os.write(body.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val code = conn.responseCode
+            if (code != 200) {
+                val errText = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.readText() ?: ""
+                return when {
+                    code == 429 -> Attempt(
+                        "AI解析出错：请求过于频繁（429）。免费额度为共享并发，" +
+                                "请稍候重试，或在设置页填入自己的 API Key。",
+                        retryable = true
+                    )
+                    code in 500..599 -> Attempt(
+                        "AI解析出错：模型服务暂时不可用（HTTP $code），请稍后重试。",
+                        retryable = true
+                    )
+                    code == 401 || code == 403 -> Attempt(
+                        "AI解析出错：API Key 无效或无权限（HTTP $code），请在设置页检查 Key。"
+                    )
+                    else -> Attempt("请求失败（HTTP $code）：${extractError(errText)}")
+                }
+            }
+
+            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                reader.forEachLine { line ->
+                    val trimmed = line.trim()
+                    if (!trimmed.startsWith("data:")) return@forEachLine
+                    val data = trimmed.removePrefix("data:").trim()
+                    if (data == "[DONE]") return@forEachLine
+                    try {
+                        val json = JSONObject(data)
+                        val choices = json.optJSONArray("choices") ?: return@forEachLine
+                        if (choices.length() == 0) return@forEachLine
+                        val delta = choices.getJSONObject(0).optJSONObject("delta") ?: return@forEachLine
+                        val piece = delta.optString("content", "")
+                        if (piece.isNotEmpty()) onDelta(piece)
+                    } catch (_: Exception) {
+                        // 忽略单条解析失败，继续读取后续 chunk
+                    }
+                }
+            }
+            Attempt("")
+        } catch (e: java.net.SocketTimeoutException) {
             Attempt(
                 "AI解析出错：请求超时。免费模型高峰期排队较久，请稍后重试；" +
                         "也可在设置页填入自己的 API Key 或更换更快的模型。"

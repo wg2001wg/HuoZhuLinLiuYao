@@ -363,7 +363,7 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
-                IconButton(onClick = { vm.fetchAnalysis() }) {
+                IconButton(onClick = { vm.fetchAnalysisStream() }) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "重新解析",
@@ -383,8 +383,23 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                 ) {
                     CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
                     Text(
-                        "正在联网 AI 解析，约需 1~2 分钟，请耐心等待…",
+                        "正在连接模型，即将开始逐字输出…",
                         style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            is AnalysisState.Streaming -> {
+                MarkdownContent(s.content)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "● 生成中…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -399,7 +414,7 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(onClick = { vm.fetchAnalysis() }, modifier = Modifier.weight(1f)) {
+                    Button(onClick = { vm.fetchAnalysisStream() }, modifier = Modifier.weight(1f)) {
                         Text("重试")
                     }
                     Button(
@@ -426,7 +441,7 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                 )
                 Spacer(Modifier.height(6.dp))
                 Button(
-                    onClick = { vm.fetchAnalysis() },
+                    onClick = { vm.fetchAnalysisStream() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("开始 AI解析")

@@ -134,6 +134,10 @@ private fun HistoryCard(
                             runAiAnalysis({ vm.buildAiPrompt(rec) }, apiKey, baseUrl, model) { state ->
                                 when (state) {
                                     is AiState.Loading -> loading = true
+                                    is AiState.Streaming -> {
+                                        loading = true
+                                        resultText = state.text
+                                    }
                                     is AiState.Success -> {
                                         loading = false
                                         resultText = state.text
@@ -176,13 +180,25 @@ private fun HistoryCard(
                     )
                     Spacer(Modifier.height(4.dp))
                     when {
+                        loading && resultText != null -> {
+                            Text(
+                                resultText!!,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "● 生成中…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
                         loading -> Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
                             Text(
-                                "正在联网 AI 解析，约需 1~2 分钟…",
+                                "正在联网 AI 解析，即将开始逐字输出…",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -212,6 +228,7 @@ private fun HistoryCard(
 // 简单的 AI解析状态机
 private sealed class AiState {
     object Loading : AiState()
+    data class Streaming(val text: String) : AiState()
     data class Success(val text: String) : AiState()
     data class Error(val msg: String) : AiState()
 }
@@ -234,13 +251,30 @@ private fun runAiAnalysis(
     }
     onState(AiState.Loading)
     CoroutineScope(Dispatchers.Main).launch {
-        val text = withContext(Dispatchers.IO) {
-            WebAnalysis.analyze(key, prompt, url, mdl)
+        val sb = StringBuilder()
+        var errored = false
+        withContext(Dispatchers.IO) {
+            WebAnalysis.analyzeStream(
+                key, prompt, url, mdl,
+                onDelta = { piece ->
+                    sb.append(piece)
+                    onState(AiState.Streaming(sb.toString()))
+                },
+                onError = { msg ->
+                    errored = true
+                    if (sb.isEmpty()) {
+                        onState(AiState.Error(msg))
+                    } else {
+                        onState(AiState.Success(sb.toString() + "\n\n（解析中断：$msg）"))
+                    }
+                }
+            )
         }
-        if (text.startsWith("请求失败") || text.startsWith("AI解析出错")) {
-            onState(AiState.Error(text))
+        if (errored) return@launch
+        if (sb.isEmpty()) {
+            onState(AiState.Error("模型未返回内容。"))
         } else {
-            onState(AiState.Success(text))
+            onState(AiState.Success(sb.toString()))
         }
     }
 }
