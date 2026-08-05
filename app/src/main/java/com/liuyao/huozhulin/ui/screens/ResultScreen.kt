@@ -45,7 +45,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import com.liuyao.huozhulin.data.Yijing
 import com.liuyao.huozhulin.data.model.DiZhi
 import com.liuyao.huozhulin.data.model.PaiPanResult
 import com.liuyao.huozhulin.data.model.kongWang
@@ -284,41 +283,29 @@ private fun ScripturePanel(originalName: String, changedName: String?) {
             )
             .padding(10.dp)
     ) {
-        Text(originalName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        val guaCi = Yijing.guaCi[originalName]
-        if (!guaCi.isNullOrBlank()) {
-            Text("卦辞：$guaCi", style = MaterialTheme.typography.bodySmall)
-        }
-        Yijing.yaoCi[originalName]?.forEach { (t, x) ->
-            Text("$t：$x", style = MaterialTheme.typography.bodySmall)
-        }
+        // ===== 主卦（本卦）河洛理数卦诀 =====
+        Text("主卦：$originalName", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         HeLuoSection(originalName)
+
+        // ===== 变卦（之卦）河洛理数卦诀 =====
         if (changedName != null) {
             Spacer(Modifier.height(10.dp))
-            Text("变卦：$changedName", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
-            val chGuaCi = Yijing.guaCi[changedName]
-            if (!chGuaCi.isNullOrBlank()) {
-                Text("卦辞：$chGuaCi", style = MaterialTheme.typography.bodySmall)
-            }
-            Yijing.yaoCi[changedName]?.forEach { (t, x) ->
-                Text("$t：$x", style = MaterialTheme.typography.bodySmall)
-            }
+            Text("变卦：$changedName", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
             HeLuoSection(changedName)
         }
     }
 }
 
+/**
+ * 《河洛理数》卦诀区块：以河洛「总诀 + 各爻诀」替换原有《周易》卦辞爻辞。
+ * 因河洛诀文已含卦辞、象曰与诀文诗，故不再展示 Yijing 原文爻辞。
+ */
 @Composable
 private fun HeLuoSection(guaName: String) {
     val zong = HeLuoLiShu.zongJue[guaName]
     val yao = HeLuoLiShu.yaoJue[guaName]
     if (zong == null && yao == null) return
     Spacer(Modifier.height(10.dp))
-    Text(
-        "《河洛理数》卦诀",
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.tertiary
-    )
     if (zong != null) {
         Spacer(Modifier.height(4.dp))
         Text("总诀：$zong", style = MaterialTheme.typography.bodySmall)
