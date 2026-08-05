@@ -53,7 +53,6 @@ import com.liuyao.huozhulin.engine.GanZhiCalendar
 import com.liuyao.huozhulin.engine.LunarCalendar
 import com.liuyao.huozhulin.engine.ShenSha
 import com.liuyao.huozhulin.ui.components.PlateTable
-import com.liuyao.huozhulin.engine.WebAnalysis
 import com.liuyao.huozhulin.viewmodel.AnalysisState
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
 import java.util.Calendar
@@ -206,7 +205,7 @@ fun ResultScreen(nav: NavHostController, vm: PaiPanViewModel) {
 
             when (selectedTab) {
                 0 -> ScripturePanel(r.original.name, r.changed?.name)
-                1 -> SystemAnalysisPanel(vm, r)
+                1 -> SystemAnalysisPanel(nav, vm, r)
             }
 
             // ===== 底部按钮 =====
@@ -317,18 +316,8 @@ private fun HeLuoSection(guaName: String) {
 }
 
 @Composable
-private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
+private fun SystemAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel, r: PaiPanResult) {
     val state by vm.analysisState.collectAsState()
-    val apiKey by vm.doubaoApiKey.collectAsState()
-    var showApiKeyDialog by remember { mutableStateOf(false) }
-
-    if (showApiKeyDialog) {
-        ApiKeyDialog(
-            currentKey = apiKey,
-            onSave = { vm.setDoubaoApiKey(it) },
-            onDismiss = { showApiKeyDialog = false }
-        )
-    }
 
     Column(
         modifier = Modifier
@@ -376,22 +365,22 @@ private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "联网解析材料",
+                "AI 联网解读（DeepSeek）",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.secondary
             )
             Row {
-                IconButton(onClick = { showApiKeyDialog = true }) {
+                IconButton(onClick = { nav.navigate("settings") }) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "设置豆包 API Key",
+                        contentDescription = "前往设置 API Key",
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
                 IconButton(onClick = { vm.fetchAnalysis() }) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新联网解析",
+                        contentDescription = "刷新 AI 解读",
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
@@ -399,7 +388,7 @@ private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
         }
         Spacer(Modifier.height(4.dp))
 
-        // —— 联网解析结果 ——
+        // —— AI 联网解读结果 ——
         when (val s = state) {
             is AnalysisState.Loading -> {
                 Row(
@@ -408,115 +397,36 @@ private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                    Text("正在联网获取解析材料…", style = MaterialTheme.typography.bodySmall)
+                    Text("正在联网请求 DeepSeek 解读…", style = MaterialTheme.typography.bodySmall)
                 }
             }
             is AnalysisState.Error -> {
                 Text(
-                    "联网解析暂不可用：${s.message}。已切换为本地解析，点击右上角刷新重试。",
+                    "AI 解读暂不可用：${s.message}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
-                val fb = WebAnalysis.fallback(r)
-                fb.items.forEach { item -> AnalysisRow(item) }
             }
             is AnalysisState.Success -> {
                 Text(
-                    "检索词：${s.result.query}（来源：${s.result.items.firstOrNull()?.source ?: "网络"}）",
+                    "模型：${s.result.model}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
                 Spacer(Modifier.height(2.dp))
-                if (s.result.items.isEmpty()) {
-                    Text("未获取到解析材料，请稍后重试。", style = MaterialTheme.typography.bodySmall)
-                } else {
-                    s.result.items.forEach { item -> AnalysisRow(item) }
-                }
+                Text(
+                    s.result.content,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
             AnalysisState.Idle -> {
                 Button(
                     onClick = { vm.fetchAnalysis() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("点击获取联网解析")
+                    Text("点击获取 AI 解读")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AnalysisRow(item: com.liuyao.huozhulin.engine.WebAnalysis.AnalysisItem) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                RoundedCornerShape(6.dp)
-            )
-            .padding(8.dp)
-    ) {
-        if (item.title.isNotBlank() && item.title != "相关解析") {
-            Text(
-                item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Text(
-            item.snippet,
-            style = MaterialTheme.typography.bodySmall
-        )
-        if (!item.source.isNullOrBlank() && item.source != "网页") {
-            Text(
-                "来源：${item.source}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-        }
-    }
-}
-
-@Composable
-private fun ApiKeyDialog(
-    currentKey: String,
-    onSave: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var key by remember { mutableStateOf(currentKey) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(8.dp))
-            .padding(12.dp)
-    ) {
-        Text("豆包 API Key 设置", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "配置火山方舟 API Key 后可调用豆包大模型生成更详细的六爻解析。未配置时仍可使用本地增强解析。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = key,
-            onValueChange = { key = it },
-            label = { Text("API Key") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outline)
-            ) { Text("取消") }
-            Button(
-                onClick = { onSave(key); onDismiss() },
-                modifier = Modifier.weight(1f)
-            ) { Text("保存") }
         }
     }
 }

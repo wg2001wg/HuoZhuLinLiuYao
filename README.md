@@ -19,24 +19,30 @@
   - 旬空（依日干支）、旺相休囚死（依月建，未填月建则不显示旺衰）
 - **经文参考**：内置《周易》六十四卦卦辞 / 爻辞（`data/Yijing.kt`，王弼本）
 - **历史记录**：Room 本地保存每次排盘，可回看与删除
+- **AI 联网解读（DeepSeek 免费大模型）**
+  - 在排盘**结果页**或**历史页**一键发起联网解析，调用 DeepSeek 开放平台的免费 `deepseek-chat` 模型，对卦象（世应、用神、六亲、六神、动变、日辰月建、旬空）做专业解读与建议
+  - API Key 通过应用内**设置页**（`SettingsScreen`）输入，使用 **DataStore** 本地持久化，不上传除排盘文本外的任何信息
+  - 支持自定义接口地址（兼容 OpenAI 格式），可对接其它免费大模型
+  - 未配置 Key 时给出提示，不阻塞本地排盘
 
 ## 目录结构
 ```
 HuoZhuLinLiuYao/
 ├── app/
-│   └── src/main/java/com/example/huozhulin/
+│   └── src/main/java/com/liuyao/huozhulin/
 │       ├── data/
 │       │   ├── model/        # Hexagram / Trigram / Symbols / Plate 等五行干支结构
 │       │   ├── Yijing.kt     # 周易卦辞爻辞（王弼本）
-│       │   └── local/        # Room：AppDatabase / RecordDao / RecordEntity
+│       │   └── local/        # Room：AppDatabase / RecordDao / RecordEntity / SettingsDataStore(DataStore)
 │       ├── engine/
 │       │   ├── CastEngine.kt     # 七种起卦引擎
 │       │   ├── PaiPanEngine.kt   # 装卦排盘引擎（纳甲/六亲/六神/世应/动变/伏神）
 │       │   ├── GanZhiCalendar.kt # 公历→年月日时干支
 │       │   ├── LunarCalendar.kt  # 农历/节气换算
-│       │   └── ShenSha.kt        # 旬空等神煞计算
+│       │   ├── ShenSha.kt        # 旬空等神煞计算
+│       │   └── WebAnalysis.kt    # 联网解析：组装提示词并调用 DeepSeek（OpenAI 兼容）
 │       ├── ui/
-│       │   ├── screens/      # 起卦(CastScreens)/结果(ResultScreen)/历史(HistoryScreen)
+│       │   ├── screens/      # 起卦(CastScreens)/结果(ResultScreen)/历史(HistoryScreen)/设置(SettingsScreen)
 │       │   ├── components/   # HexagramView、PlateTable 爻图与排盘表格
 │       │   └── theme/        # 主题(Theme.kt)
 │       ├── viewmodel/        # PaiPanViewModel
@@ -70,6 +76,15 @@ python verify_gz.py    # 校验干支（年月日时）推算
   - 构建命令：`./gradlew assembleRelease`
   - 产物：`app/build/outputs/apk/release/app-release.apk`
 
+## 配置 AI 联网解读
+1. 注册并登录 [DeepSeek 开放平台](https://platform.deepseek.com)，在「API Keys」页面创建一个 Key（免费额度即可）。
+2. 在应用首页点击 **「AI 解读设置（DeepSeek）」**，粘贴 API Key 并点击保存（也可在结果页右上角齿轮进入）。
+3. 在**结果页**或**历史页**点击「AI 解读」按钮，即会联网请求 DeepSeek 对当前卦象进行解读。
+4. 「接口地址」可留空（默认 `https://api.deepseek.com/chat/completions`），也可填写任何兼容 OpenAI 格式的免费模型地址。
+
+> 提示：DeepSeek 为新用户提供的免费额度有限且可能调整，请以自己的平台账户为准；应用仅在本地组装排盘文本后发送给模型，不会上传其它信息。
+
 ## 说明
 - 时间起卦采用简化算法（以 年月日时 构造数字），与严格农历节气起卦略有差异，仅供娱乐参考。
+- 联网解读由第三方大模型生成，结果仅为基于传统理论的参考，不构成任何决策建议。
 - 本应用为传统文化工具，结果仅供参考，不构成任何决策建议。

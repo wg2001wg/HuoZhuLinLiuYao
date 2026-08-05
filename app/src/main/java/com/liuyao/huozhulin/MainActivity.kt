@@ -21,6 +21,7 @@ import com.liuyao.huozhulin.ui.screens.ManualScreen
 import com.liuyao.huozhulin.ui.screens.NumberScreen
 import com.liuyao.huozhulin.ui.screens.RandomScreen
 import com.liuyao.huozhulin.ui.screens.ResultScreen
+import com.liuyao.huozhulin.ui.screens.SettingsScreen
 import com.liuyao.huozhulin.ui.screens.SpecifiedScreen
 import com.liuyao.huozhulin.ui.theme.AppTheme
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
                         composable("lifetime") { LifetimeScreen(nav, vm) }
                         composable("result") { ResultScreen(nav, vm) }
                         composable("history") { HistoryScreen(nav, vm) }
+                        composable("settings") { SettingsScreen(nav, vm) }
                     }
                 }
             }

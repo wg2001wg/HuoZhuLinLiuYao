@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,6 +92,15 @@ fun HomeScreen(nav: NavHostController) {
             CastButton(nav, "lifetime", "终身卦")
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { nav.navigate("history") }, Modifier.fillMaxWidth()) { Text("排盘历史") }
+            OutlinedButton(onClick = { nav.navigate("settings") }, Modifier.fillMaxWidth()) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("AI 解读设置（DeepSeek）")
+            }
         }
     }
 }
