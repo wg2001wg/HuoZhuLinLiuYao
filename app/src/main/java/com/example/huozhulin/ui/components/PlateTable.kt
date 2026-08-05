@@ -259,26 +259,24 @@ private fun LineText(line: LineInfo, isFu: Boolean) {
 }
 
 /**
- * 动变标记：
- * - 阳爻动（老阳）→ 变阴：o --
- * - 阴爻动（老阴）→ 变阳：× —
- * - 静爻阳：—
- * - 静爻阴：--
+ * 动变标记（按传统六爻排盘风格，仅标记“动爻”，静爻留空，避免与前后爻条列重复）：
+ * - 阳爻动（老阳）→ 变阴：o
+ * - 阴爻动（老阴）→ 变阳：×
+ * - 静爻：留空
  */
 @Composable
 private fun MovingMarker(original: LineInfo) {
     val text = when {
-        original.moving && original.yang -> "o --"
-        original.moving && !original.yang -> "× —"
-        !original.moving && original.yang -> "—"
-        else -> "--"
+        original.moving && original.yang -> "o"
+        original.moving && !original.yang -> "×"
+        else -> ""
     }
     Text(
         text = text,
         style = lineTextStyle,
         maxLines = 1,
         softWrap = false,
-        color = if (original.moving) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+        color = MaterialTheme.colorScheme.primary
     )
 }
 
