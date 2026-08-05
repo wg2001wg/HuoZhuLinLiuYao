@@ -101,7 +101,16 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
             ) {
                 OutlinedTextField(
                     value = modelInput,
-                    onValueChange = { modelInput = it; saved = false; modelMenuExpanded = true },
+                    onValueChange = {
+                        modelInput = it
+                        saved = false
+                        modelMenuExpanded = true
+                        // 模型名被清空时，API Key 与接口地址一并恢复到默认
+                        if (it.trim().isEmpty()) {
+                            keyInput = ""
+                            urlInput = ""
+                        }
+                    },
                     label = { Text("模型名（可选，留空用默认）") },
                     placeholder = { Text(WebAnalysis.DEFAULT_MODEL) },
                     modifier = Modifier
@@ -122,6 +131,10 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
                         text = { Text("（不指定，使用默认）") },
                         onClick = {
                             modelInput = ""
+                            // 模型清空，API Key 与接口地址一并恢复到默认
+                            keyInput = ""
+                            urlInput = ""
+                            saved = false
                             modelMenuExpanded = false
                         }
                     )
@@ -190,13 +203,18 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
             ) {
                 Button(
                     onClick = {
+                        val m = modelInput.trim()
+                        // 模型名清空时，API Key 与接口地址一并恢复到默认（留空即使用内置默认值）
+                        if (m.isEmpty()) {
+                            keyInput = ""
+                            urlInput = ""
+                        }
                         vm.saveApiKey(keyInput)
                         vm.saveBaseUrl(urlInput)
                         vm.saveModel(modelInput)
                         // 若用户输入了一个新模型名（不在预设、也不在已保存列表中），则保存该模型供下次选择
-                        val m = modelInput.trim()
-                        val known = WebAnalysis.MODEL_OPTIONS.any { it.model == m } ||
-                            savedModels.any { it.first == m }
+                        val known = WebAnalysis.MODEL_OPTIONS.any { it.model.equals(m, true) } ||
+                            savedModels.any { it.first.equals(m, true) }
                         if (m.isNotEmpty() && !known) {
                             vm.addCustomModel(m, urlInput)
                         }

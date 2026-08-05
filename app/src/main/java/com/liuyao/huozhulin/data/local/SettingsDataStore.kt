@@ -66,8 +66,10 @@ object SettingsDataStore {
         if (m.isEmpty()) return
         val url = baseUrl.trim()
         context.dataStore.edit { prefs ->
-            val list = parseModels(prefs[MODELS] ?: "").toMutableList()
-            val idx = list.indexOfFirst { it.first == m }
+            // 仅追加/更新，绝不移除已有模型；大小写不敏感去重避免重复条目
+            val existing = parseModels(prefs[MODELS] ?: "")
+            val idx = existing.indexOfFirst { it.first.equals(m, ignoreCase = true) }
+            val list = existing.toMutableList()
             if (idx >= 0) list[idx] = m to url else list.add(m to url)
             prefs[MODELS] = list.joinToString("\n") { "${it.first}\u0001${it.second}" }
         }
