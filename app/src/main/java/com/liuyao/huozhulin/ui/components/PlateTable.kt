@@ -33,6 +33,7 @@ private val lineTextStyle
 /** 参考传统排盘风格配色 */
 private val shenColorValue = Color(0xFF8D6E63)      // 六神：棕褐色
 private val fuColorValue = Color(0xFF2E7D32)        // 主伏/变伏：墨绿
+private val fuMissingColorValue = Color(0xFFD32F2F) // 伏神六亲在卦中无对应：红色
 private val shiYingColorValue = Color(0xFF1565C0)   // 世/应：蓝色
 
 /**
@@ -66,7 +67,7 @@ fun PlateTable(result: PaiPanResult) {
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             HeaderText("六神", Modifier.weight(0.7f))
-            Box(Modifier.weight(1f))
+            HeaderText("主伏", Modifier.weight(1f))
             HeaderCell(
                 "${orig.name}\n${palaceName}宫·$palaceElement",
                 Modifier.weight(2f),
