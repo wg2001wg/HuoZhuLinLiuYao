@@ -31,7 +31,9 @@ object WebAnalysis {
         ModelOption("OpenAI GPT-4o-mini", "gpt-4o-mini", "https://api.openai.com/v1/"),
         ModelOption("DeepSeek Chat", "deepseek-chat", "https://api.deepseek.com/v1/"),
         ModelOption("通义千问 Plus", "qwen-plus", "https://dashscope.aliyuncs.com/compatible-mode/v1/"),
-        ModelOption("Moonshot Kimi", "moonshot-v1-8k", "https://api.moonshot.cn/v1/")
+        ModelOption("Moonshot Kimi", "moonshot-v1-8k", "https://api.moonshot.cn/v1/"),
+        ModelOption("豆包 Doubao-Pro", "doubao-pro-256k", "https://ark.cn-beijing.volces.com/api/v3/"),
+        ModelOption("豆包 Doubao-Lite", "doubao-lite-4k", "https://ark.cn-beijing.volces.com/api/v3/")
     )
 
     /**
