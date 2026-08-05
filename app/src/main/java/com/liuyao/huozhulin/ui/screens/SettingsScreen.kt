@@ -63,6 +63,7 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
             )
             Text(
                 "在 DeepSeek 开放平台（platform.deepseek.com）注册并创建 API Key 后，粘贴到下方即可。\n" +
+                        "不填也可使用内置免费 Key 直接体验 AI 解读功能。\n" +
                         "应用仅将卦象排盘文本发送给模型用于解读，不会上传其它信息。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline

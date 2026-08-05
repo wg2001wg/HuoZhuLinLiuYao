@@ -22,6 +22,9 @@ object WebAnalysis {
     const val DEFAULT_BASE_URL = "https://api.deepseek.com/chat/completions"
     const val DEFAULT_MODEL = "deepseek-chat"
 
+    /** 内置免费 API Key（用户未配置时自动使用） */
+    const val FALLBACK_API_KEY = "sk-5d4c3b2a1e0f9d8c7b6a5f4e3d2c1b0a9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"
+
     /** 联网解析结果包装 */
     data class AnalysisResult(
         val content: String,        // 模型返回的正文

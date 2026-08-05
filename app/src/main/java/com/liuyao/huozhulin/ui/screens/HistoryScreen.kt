@@ -218,10 +218,7 @@ private fun runAiAnalysis(
     onState: (AiState) -> Unit
 ) {
     val key = apiKey.trim()
-    if (key.isBlank()) {
-        onState(AiState.Error("尚未配置 DeepSeek API Key。请前往「设置」页面填写后重试。"))
-        return
-    }
+    val useKey = if (key.isBlank()) WebAnalysis.FALLBACK_API_KEY else key
     val prompt = buildPrompt()
     if (prompt == null) {
         onState(AiState.Error("该记录缺少完整排盘数据，无法重建卦象。"))
@@ -230,7 +227,7 @@ private fun runAiAnalysis(
     onState(AiState.Loading)
     CoroutineScope(Dispatchers.Main).launch {
         val text = withContext(Dispatchers.IO) {
-            WebAnalysis.analyze(key, prompt, baseUrl.ifBlank { WebAnalysis.DEFAULT_BASE_URL })
+            WebAnalysis.analyze(useKey, prompt, baseUrl.ifBlank { WebAnalysis.DEFAULT_BASE_URL })
         }
         if (text.startsWith("请求失败") || text.startsWith("联网解析出错")) {
             onState(AiState.Error(text))
