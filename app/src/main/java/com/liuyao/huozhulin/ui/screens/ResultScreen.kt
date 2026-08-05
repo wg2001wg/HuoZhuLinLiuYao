@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -331,6 +332,17 @@ private fun HeLuoSection(guaName: String) {
 @Composable
 private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
     val state by vm.analysisState.collectAsState()
+    val apiKey by vm.doubaoApiKey.collectAsState()
+    var showApiKeyDialog by remember { mutableStateOf(false) }
+
+    if (showApiKeyDialog) {
+        ApiKeyDialog(
+            currentKey = apiKey,
+            onSave = { vm.setDoubaoApiKey(it) },
+            onDismiss = { showApiKeyDialog = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -340,23 +352,11 @@ private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
             )
             .padding(10.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                "系统解析",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-            if (state !is AnalysisState.Idle) {
-                IconButton(onClick = { vm.fetchAnalysis() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "重新联网解析")
-                }
-            }
-        }
+        Text(
+            "系统解析",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
         Spacer(Modifier.height(4.dp))
 
         // —— 本地基础解析（始终展示）——
@@ -383,11 +383,33 @@ private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
             style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(8.dp))
-        Text(
-            "联网解析材料",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.secondary
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "联网解析材料",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Row {
+                IconButton(onClick = { showApiKeyDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置豆包 API Key",
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                IconButton(onClick = { vm.fetchAnalysis() }) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "刷新联网解析",
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
 
         // —— 联网解析结果 ——
@@ -465,6 +487,49 @@ private fun AnalysisRow(item: com.liuyao.huozhulin.engine.WebAnalysis.AnalysisIt
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyDialog(
+    currentKey: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var key by remember { mutableStateOf(currentKey) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(8.dp))
+            .padding(12.dp)
+    ) {
+        Text("豆包 API Key 设置", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "配置火山方舟 API Key 后可调用豆包大模型生成更详细的六爻解析。未配置时仍可使用本地增强解析。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = key,
+            onValueChange = { key = it },
+            label = { Text("API Key") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outline)
+            ) { Text("取消") }
+            Button(
+                onClick = { onSave(key); onDismiss() },
+                modifier = Modifier.weight(1f)
+            ) { Text("保存") }
         }
     }
 }

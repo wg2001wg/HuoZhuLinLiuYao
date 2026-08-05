@@ -1,6 +1,7 @@
 package com.liuyao.huozhulin.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.liuyao.huozhulin.data.local.AppDatabase
@@ -33,10 +34,15 @@ sealed interface AnalysisState {
 class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
 
     private val dao = AppDatabase.get(app).dao()
+    private val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** 联网解析状态 */
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState
+
+    /** 豆包 API Key（用户自行配置） */
+    private val _doubaoApiKey = MutableStateFlow(prefs.getString(KEY_DOUBAO_API_KEY, "") ?: "")
+    val doubaoApiKey: StateFlow<String> = _doubaoApiKey
 
     private val _lines = MutableStateFlow<List<Boolean>?>(null)
     private val _moving = MutableStateFlow<List<Boolean>?>(null)
@@ -83,8 +89,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         if (_analysisState.value is AnalysisState.Loading) return
         _analysisState.value = AnalysisState.Loading
         viewModelScope.launch {
+            val apiKey = _doubaoApiKey.value.takeIf { it.isNotBlank() }
             val res = kotlin.runCatching {
-                withContext(Dispatchers.IO) { WebAnalysis.analyze(r) }
+                withContext(Dispatchers.IO) { WebAnalysis.analyze(r, apiKey) }
             }
             if (res.isSuccess) {
                 _analysisState.value = AnalysisState.Success(res.getOrThrow())
@@ -94,6 +101,13 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    /** 保存/清空豆包 API Key */
+    fun setDoubaoApiKey(key: String) {
+        val trimmed = key.trim()
+        _doubaoApiKey.value = trimmed
+        prefs.edit().putString(KEY_DOUBAO_API_KEY, trimmed).apply()
     }
 
     fun saveCurrent(): kotlinx.coroutines.Job = viewModelScope.launch {
@@ -127,4 +141,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun delete(rec: RecordEntity) = viewModelScope.launch { dao.delete(rec) }
+
+    companion object {
+        private const val PREFS_NAME = "huozhulin_settings"
+        private const val KEY_DOUBAO_API_KEY = "doubao_api_key"
+    }
 }
