@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,15 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
     var modelInput by remember { mutableStateOf(model) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+
+    // 切换模型时，自动填充该模型已保存的 API Key（每种模型各自保存）
+    val savedKeyForModel by vm.keyForModelFlow(modelInput).collectAsState(initial = "")
+    LaunchedEffect(modelInput) {
+        keyInput = savedKeyForModel
+    }
+
+    // 用户已添加的自定义模型列表（与预设一并展示在下拉中）
+    val savedModels by vm.savedModelsFlow().collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("AI解析设置") }, navigationIcon = { BackIcon(nav) }) }
@@ -136,6 +146,23 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
                                 }
                             )
                         }
+                    // 已添加的自定义模型：不在预设中则展示，供下次直接选择
+                    savedModels
+                        .filter { (m, _) -> WebAnalysis.MODEL_OPTIONS.none { it.model == m } }
+                        .filter { (m, _) -> filter.isEmpty() || m.contains(filter, true) }
+                        .forEach { (m, u) ->
+                            DropdownMenuItem(
+                                text = { Text("$m（自定义）") },
+                                onClick = {
+                                    modelInput = m
+                                    saved = false
+                                    if (urlInput.trim().isEmpty()) {
+                                        urlInput = u
+                                    }
+                                    modelMenuExpanded = false
+                                }
+                            )
+                        }
                 }
             }
 
@@ -166,6 +193,13 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
                         vm.saveApiKey(keyInput)
                         vm.saveBaseUrl(urlInput)
                         vm.saveModel(modelInput)
+                        // 若用户输入了一个新模型名（不在预设、也不在已保存列表中），则保存该模型供下次选择
+                        val m = modelInput.trim()
+                        val known = WebAnalysis.MODEL_OPTIONS.any { it.model == m } ||
+                            savedModels.any { it.first == m }
+                        if (m.isNotEmpty() && !known) {
+                            vm.addCustomModel(m, urlInput)
+                        }
                         saved = true
                     },
                     modifier = Modifier.weight(1f)

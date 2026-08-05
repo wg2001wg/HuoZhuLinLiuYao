@@ -57,9 +57,10 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            _apiKey.value = SettingsDataStore.apiKeyFlow(appContext).first()
             _baseUrl.value = SettingsDataStore.baseUrlFlow(appContext).first()
             _model.value = SettingsDataStore.modelFlow(appContext).first()
+            // 按当前模型加载对应的 API Key（每种模型各自保存）
+            _apiKey.value = SettingsDataStore.keyForModelFlow(appContext, _model.value).first()
         }
     }
 
@@ -137,11 +138,24 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 保存 AI 模型 API Key（同时写入 DataStore 与内存 StateFlow） */
+    /** 保存某模型的 API Key（按模型分别保存，同时写入内存 StateFlow） */
     fun saveApiKey(key: String) {
         val trimmed = key.trim()
         _apiKey.value = trimmed
-        viewModelScope.launch { SettingsDataStore.saveApiKey(appContext, trimmed) }
+        viewModelScope.launch { SettingsDataStore.saveKeyForModel(appContext, _model.value, trimmed) }
+    }
+
+    /** 读取某模型已保存的 API Key 流（供设置页切换模型时自动填充） */
+    fun keyForModelFlow(model: String): Flow<String> =
+        SettingsDataStore.keyForModelFlow(appContext, model)
+
+    /** 用户已添加的自定义模型列表（模型名 + 接口地址），供设置页下拉复用 */
+    fun savedModelsFlow(): Flow<List<Pair<String, String>>> =
+        SettingsDataStore.savedModelsFlow(appContext)
+
+    /** 将用户新输入的模型名保存到本地列表，下次设置时可直接选择 */
+    fun addCustomModel(model: String, baseUrl: String) {
+        viewModelScope.launch { SettingsDataStore.addCustomModel(appContext, model, baseUrl) }
     }
 
     /** 保存自定义接口地址 */
