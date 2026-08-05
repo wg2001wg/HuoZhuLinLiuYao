@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.huozhulin"
+    namespace = "com.liuyao.huozhulin"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.huozhulin"
+        applicationId = "com.liuyao.huozhulin"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
