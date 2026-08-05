@@ -1,6 +1,9 @@
 package com.liuyao.huozhulin.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.liuyao.huozhulin.data.local.AppDatabase
@@ -61,6 +64,33 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             _model.value = SettingsDataStore.modelFlow(appContext).first()
             // 按当前模型加载对应的 API Key（每种模型各自保存）
             _apiKey.value = SettingsDataStore.keyForModelFlow(appContext, _model.value).first()
+        }
+    }
+
+    /**
+     * 当前设备是否具备可用的网络（Wi-Fi / 蜂窝 / 以太网）。
+     * 部分手机 ROM（如 MIUI、EMUI、ColorOS）提供「联网权限」开关，
+     * 即使声明了 INTERNET 权限，若该开关被关闭也会导致请求失败，需引导用户在系统设置中开启。
+     */
+    fun networkAvailable(): Boolean {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return true
+        val net = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    /**
+     * 给 AI 解析失败信息补充「网络权限」引导。
+     * 当检测到设备无可用网络时，提示用户到系统设置开启本应用的联网权限。
+     */
+    private fun withNetworkHint(message: String): String {
+        return if (networkAvailable()) {
+            message
+        } else {
+            "$message\n\n可能是网络未连接或本应用的「联网权限」被关闭。" +
+                "请前往「系统设置 → 应用 → 火珠林六爻 → 权限」中开启「网络/联网」权限后重试。"
         }
     }
 
@@ -132,7 +162,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } else {
                 _analysisState.value = AnalysisState.Error(
-                    text ?: res.exceptionOrNull()?.message ?: "未知错误"
+                    withNetworkHint(text ?: res.exceptionOrNull()?.message ?: "未知错误")
                 )
             }
         }
@@ -240,7 +270,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                         },
                         onError = { msg ->
                             if (sb.isEmpty()) {
-                                _analysisState.value = AnalysisState.Error(msg)
+                                _analysisState.value = AnalysisState.Error(withNetworkHint(msg))
                             } else {
                                 // 已有部分内容则保留已生成部分，并标注中断
                                 _analysisState.value = AnalysisState.Success(
@@ -256,7 +286,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             }.exceptionOrNull()
             if (err != null) {
                 if (sb.isEmpty()) {
-                    _analysisState.value = AnalysisState.Error(err.message ?: "未知错误")
+                    _analysisState.value = AnalysisState.Error(withNetworkHint(err.message ?: "未知错误"))
                 } else {
                     _analysisState.value = AnalysisState.Success(
                         AnalysisResult(content = sb.toString(), model = mdl)
@@ -266,7 +296,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             }
             // 正常完成（非 onError 中断）：有内容则成功，无内容则报错
             if (sb.isEmpty()) {
-                _analysisState.value = AnalysisState.Error("模型未返回内容。")
+                _analysisState.value = AnalysisState.Error(withNetworkHint("模型未返回内容。"))
             } else {
                 _analysisState.value = AnalysisState.Success(
                     AnalysisResult(content = sb.toString(), model = mdl)

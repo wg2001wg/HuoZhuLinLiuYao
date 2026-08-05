@@ -1,6 +1,9 @@
 package com.liuyao.huozhulin.ui.screens
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -151,7 +155,8 @@ private fun HistoryCard(
                                     is AiState.Success -> {
                                         loading = false
                                         resultText = state.text
-                                        // 将该记录已有的 AI 结果更新为新生成内容，下次直接查看
+                                        errorText = null
+                                        // 刷新 AI 解析后，自动将最终结果写回该历史记录，下次离线直接查看
                                         savedResult = state.text
                                         savedModel = model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
                                         onSaved(
@@ -182,6 +187,7 @@ private fun HistoryCard(
             }
 
             if (expanded) {
+                val context = LocalContext.current
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -237,6 +243,25 @@ private fun HistoryCard(
                         Button(onClick = { nav.navigate("settings") }) {
                             Text("前往 AI解析设置")
                         }
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = {
+                                // 跳转系统应用设置页，引导用户开启本应用的「联网权限」
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            Uri.fromParts("package", context.packageName, null)
+                                        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) { Text("检查并授权网络权限") }
                     }
                     if (savedResult != null) {
                         Spacer(Modifier.height(4.dp))

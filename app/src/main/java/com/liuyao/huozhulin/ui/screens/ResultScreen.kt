@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -49,6 +50,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import com.liuyao.huozhulin.data.model.DiZhi
 import com.liuyao.huozhulin.data.model.kongWang
 import com.liuyao.huozhulin.engine.GanZhi
@@ -318,6 +322,7 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
     val state by vm.analysisState.collectAsState()
     val model by vm.model.collectAsState()
     val currentModel = model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -417,6 +422,25 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                         colors = ButtonDefaults.outlinedButtonColors()
                     ) { Text("去设置") }
                 }
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = {
+                        // 跳转系统应用设置页，引导用户开启本应用的「联网权限」
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null)
+                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) { Text("检查并授权网络权限") }
             }
             is AnalysisState.Success -> {
                 MarkdownContent(s.result.content)
