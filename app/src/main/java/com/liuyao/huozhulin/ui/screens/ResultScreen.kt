@@ -404,13 +404,17 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(onClick = { vm.fetchAnalysisStream() }, modifier = Modifier.weight(1f)) {
+                    Button(
+                        onClick = { vm.fetchAnalysisStream() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors()
+                    ) {
                         Text("重试")
                     }
                     Button(
                         onClick = { nav.navigate("settings") },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        colors = ButtonDefaults.outlinedButtonColors()
                     ) { Text("去设置") }
                 }
             }
@@ -432,7 +436,11 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                 Spacer(Modifier.height(6.dp))
                 Button(
                     onClick = { vm.fetchAnalysisStream() },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2E6B64),
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("开始 AI解析")
                 }
