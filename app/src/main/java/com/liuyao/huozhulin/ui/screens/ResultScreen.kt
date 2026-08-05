@@ -1,5 +1,6 @@
 package com.liuyao.huozhulin.ui.screens
 
+import com.liuyao.huozhulin.data.HeLuoLiShu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,8 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +32,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +53,8 @@ import com.liuyao.huozhulin.engine.GanZhiCalendar
 import com.liuyao.huozhulin.engine.LunarCalendar
 import com.liuyao.huozhulin.engine.ShenSha
 import com.liuyao.huozhulin.ui.components.PlateTable
+import com.liuyao.huozhulin.engine.WebAnalysis
+import com.liuyao.huozhulin.viewmodel.AnalysisState
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
 import java.util.Calendar
 import java.util.TimeZone
@@ -200,7 +206,7 @@ fun ResultScreen(nav: NavHostController, vm: PaiPanViewModel) {
 
             when (selectedTab) {
                 0 -> ScripturePanel(r.original.name, r.changed?.name)
-                1 -> SystemAnalysisPanel(r)
+                1 -> SystemAnalysisPanel(vm, r)
             }
 
             // ===== 底部按钮 =====
@@ -285,6 +291,7 @@ private fun ScripturePanel(originalName: String, changedName: String?) {
         Yijing.yaoCi[originalName]?.forEach { (t, x) ->
             Text("$t：$x", style = MaterialTheme.typography.bodySmall)
         }
+        HeLuoSection(originalName)
         if (changedName != null) {
             Spacer(Modifier.height(10.dp))
             Text("变卦：$changedName", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
@@ -295,12 +302,35 @@ private fun ScripturePanel(originalName: String, changedName: String?) {
             Yijing.yaoCi[changedName]?.forEach { (t, x) ->
                 Text("$t：$x", style = MaterialTheme.typography.bodySmall)
             }
+            HeLuoSection(changedName)
         }
     }
 }
 
 @Composable
-private fun SystemAnalysisPanel(r: PaiPanResult) {
+private fun HeLuoSection(guaName: String) {
+    val zong = HeLuoLiShu.zongJue[guaName]
+    val yao = HeLuoLiShu.yaoJue[guaName]
+    if (zong == null && yao == null) return
+    Spacer(Modifier.height(10.dp))
+    Text(
+        "《河洛理数》卦诀",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.tertiary
+    )
+    if (zong != null) {
+        Spacer(Modifier.height(4.dp))
+        Text("总诀：$zong", style = MaterialTheme.typography.bodySmall)
+    }
+    yao?.forEach { (t, j) ->
+        Spacer(Modifier.height(2.dp))
+        Text("${t}诀：$j", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun SystemAnalysisPanel(vm: PaiPanViewModel, r: PaiPanResult) {
+    val state by vm.analysisState.collectAsState()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -310,8 +340,26 @@ private fun SystemAnalysisPanel(r: PaiPanResult) {
             )
             .padding(10.dp)
     ) {
-        Text("系统解析", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                "系统解析",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)
+            )
+            if (state !is AnalysisState.Idle) {
+                IconButton(onClick = { vm.fetchAnalysis() }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "重新联网解析")
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
+
+        // —— 本地基础解析（始终展示）——
         Text(
             "本卦：${r.original.name}，属${r.original.hexagram.palace.cnName}宫（${r.original.hexagram.palaceElement.cn}）。",
             style = MaterialTheme.typography.bodySmall
@@ -326,7 +374,7 @@ private fun SystemAnalysisPanel(r: PaiPanResult) {
             Text("此卦无动爻，为静卦。", style = MaterialTheme.typography.bodySmall)
         } else {
             Text(
-                "动爻：${dong.joinToString("、") { "第${it.position + 1}爻" }}。",
+                "动爻：${dong.joinToString("、") { "第${it.position + 1}爻（${it.positionName}）" }}。",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -334,6 +382,90 @@ private fun SystemAnalysisPanel(r: PaiPanResult) {
             "伏神以本宫卦${r.fu.name}为伏。",
             style = MaterialTheme.typography.bodySmall
         )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "联网解析材料",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Spacer(Modifier.height(4.dp))
+
+        // —— 联网解析结果 ——
+        when (val s = state) {
+            is AnalysisState.Loading -> {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
+                    Text("正在联网获取解析材料…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            is AnalysisState.Error -> {
+                Text(
+                    "联网解析暂不可用：${s.message}。已切换为本地解析，点击右上角刷新重试。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                val fb = WebAnalysis.fallback(r)
+                fb.items.forEach { item -> AnalysisRow(item) }
+            }
+            is AnalysisState.Success -> {
+                Text(
+                    "检索词：${s.result.query}（来源：${s.result.items.firstOrNull()?.source ?: "网络"}）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Spacer(Modifier.height(2.dp))
+                if (s.result.items.isEmpty()) {
+                    Text("未获取到解析材料，请稍后重试。", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    s.result.items.forEach { item -> AnalysisRow(item) }
+                }
+            }
+            AnalysisState.Idle -> {
+                Button(
+                    onClick = { vm.fetchAnalysis() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("点击获取联网解析")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalysisRow(item: com.liuyao.huozhulin.engine.WebAnalysis.AnalysisItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                RoundedCornerShape(6.dp)
+            )
+            .padding(8.dp)
+    ) {
+        if (item.title.isNotBlank() && item.title != "相关解析") {
+            Text(
+                item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Text(
+            item.snippet,
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (!item.source.isNullOrBlank() && item.source != "网页") {
+            Text(
+                "来源：${item.source}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
     }
 }
 

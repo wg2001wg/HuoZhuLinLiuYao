@@ -11,16 +11,32 @@ import com.liuyao.huozhulin.data.model.TianGan
 import com.liuyao.huozhulin.engine.GanZhiCalendar
 import com.liuyao.huozhulin.engine.FourPillars
 import com.liuyao.huozhulin.engine.PaiPanEngine
+import com.liuyao.huozhulin.engine.WebAnalysis
+import com.liuyao.huozhulin.engine.WebAnalysis.AnalysisResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** 联网解析的状态机 */
+sealed interface AnalysisState {
+    data object Idle : AnalysisState
+    data object Loading : AnalysisState
+    data class Success(val result: AnalysisResult) : AnalysisState
+    data class Error(val message: String) : AnalysisState
+}
 
 class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
 
     private val dao = AppDatabase.get(app).dao()
+
+    /** 联网解析状态 */
+    private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
+    val analysisState: StateFlow<AnalysisState> = _analysisState
 
     private val _lines = MutableStateFlow<List<Boolean>?>(null)
     private val _moving = MutableStateFlow<List<Boolean>?>(null)
@@ -56,6 +72,28 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         dayGan.value = fp.day.gan
         dayZhi.value = fp.day.zhi
         monthZhi.value = fp.month.zhi
+    }
+
+    /**
+     * 由 UI（系统解析面板中的按钮）触发联网解析。
+     * 仅当排盘结果已就绪时执行；网络异常时降级为本地兜底，不阻塞主流程。
+     */
+    fun fetchAnalysis() {
+        val r = result.value ?: return
+        if (_analysisState.value is AnalysisState.Loading) return
+        _analysisState.value = AnalysisState.Loading
+        viewModelScope.launch {
+            val res = kotlin.runCatching {
+                withContext(Dispatchers.IO) { WebAnalysis.analyze(r) }
+            }
+            if (res.isSuccess) {
+                _analysisState.value = AnalysisState.Success(res.getOrThrow())
+            } else {
+                _analysisState.value = AnalysisState.Error(
+                    res.exceptionOrNull()?.message ?: "未知错误"
+                )
+            }
+        }
     }
 
     fun saveCurrent(): kotlinx.coroutines.Job = viewModelScope.launch {
