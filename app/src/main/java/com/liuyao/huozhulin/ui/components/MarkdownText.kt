@@ -85,10 +85,11 @@ private fun HeadingLine(
         2 -> 3
         else -> 1
     }
+    val newFontSize = (baseStyle.fontSize.value + sizeAdd).sp
     Text(
         text = parseInlineSpans(text, baseStyle),
         style = baseStyle.copy(
-            fontSize = baseStyle.fontSize.plus(sizeAdd.sp),
+            fontSize = newFontSize,
             fontWeight = FontWeight.Bold,
             color = color
         ),

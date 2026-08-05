@@ -78,6 +78,13 @@ object WebAnalysis {
     /** 重试基础退避间隔（毫秒），按次数递增 */
     private const val RETRY_DELAY_MS = 2_000L
 
+    /**
+     * 单次/流式请求的最大输出 token 数。
+     * 解卦文本包含卦象概述、用神分析、吉凶断语、具体建议等五段式内容，
+     * 实测 1200 tokens 容易在长建议处被截断，故放宽到 2500 tokens。
+     */
+    private const val MAX_TOKENS = 2500
+
     /** AI 解析结果包装 */
     data class AnalysisResult(
         val content: String,        // 模型返回的正文
@@ -141,7 +148,7 @@ object WebAnalysis {
             sb.append("\n请结合世应、用神、六亲、六神、动变、日辰月建与旬空，分析此事吉凶趋势，并给出建议。")
         }
         sb.append("\n请按以下结构作答：一、卦象概述（卦宫、世应、动变）；二、用神与六亲分析；三、六神与神煞参考；四、吉凶断语；五、具体建议。")
-        sb.append("回答请使用简体中文，条理清晰、通俗易懂。")
+        sb.append("回答请使用简体中文，条理清晰、通俗易懂。请确保输出完整，把五部分全部写完后再结束，不要在「具体建议」中途截断。")
         return sb.toString()
     }
 
@@ -245,8 +252,7 @@ object WebAnalysis {
                 })
                 put("temperature", 0.7)
                 put("stream", false)
-                // 限制输出长度：免费模型生成越长越慢，1200 tokens 足够覆盖五段式解卦
-                put("max_tokens", 1200)
+                put("max_tokens", MAX_TOKENS)
                 // GLM-4.x 系列默认开启「思考模式」，会先生成大量隐藏推理内容，
                 // 导致耗时翻倍且极易超时；此处显式关闭，仅输出正式解卦结果。
                 // 该字段对不支持的模型服务会被忽略，不影响兼容性。
@@ -326,7 +332,7 @@ object WebAnalysis {
                 })
                 put("temperature", 0.7)
                 put("stream", true)
-                put("max_tokens", 1200)
+                put("max_tokens", MAX_TOKENS)
                 // 关闭 GLM 思考模式，避免大量隐藏推理内容拖慢首字与整体耗时
                 put("thinking", JSONObject().apply { put("type", "disabled") })
             }
