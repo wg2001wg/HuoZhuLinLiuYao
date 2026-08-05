@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -80,14 +81,14 @@ private fun HeadingLine(
     color: Color
 ) {
     val sizeAdd = when (level) {
-        1 -> 5.sp
-        2 -> 3.sp
-        else -> 1.sp
+        1 -> 5
+        2 -> 3
+        else -> 1
     }
     Text(
         text = parseInlineSpans(text, baseStyle),
         style = baseStyle.copy(
-            fontSize = baseStyle.fontSize.plus(sizeAdd),
+            fontSize = baseStyle.fontSize.plus(sizeAdd.sp),
             fontWeight = FontWeight.Bold,
             color = color
         ),
