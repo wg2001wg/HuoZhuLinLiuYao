@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.liuyao.huozhulin.data.model.LineInfo
+import com.liuyao.huozhulin.data.model.LiuQin
 import com.liuyao.huozhulin.data.model.PaiPanResult
 import com.liuyao.huozhulin.data.model.ShiYingType
 
@@ -86,13 +87,17 @@ fun PlateTable(result: PaiPanResult) {
 
         Spacer(Modifier.height(2.dp))
 
+        // 主卦中实际出现的六亲集合，用于判断伏神六亲是否缺显
+        val originalLiuQinSet = orig.lines.map { it.liuQin }.toSet()
+
         // 六爻，从上爻（position 5）向下到初爻（position 0）
         for (p in 5 downTo 0) {
             PlateRow(
                 liuShen = orig.lines[p].liuShen.cn,
                 original = orig.lines[p],
                 changed = changed?.lines?.get(p),
-                fu = fu.lines[p]
+                fu = fu.lines[p],
+                originalLiuQinSet = originalLiuQinSet
             )
         }
     }
@@ -136,7 +141,8 @@ private fun PlateRow(
     liuShen: String,
     original: LineInfo,
     changed: LineInfo?,
-    fu: LineInfo
+    fu: LineInfo,
+    originalLiuQinSet: Set<LiuQin>
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().clipToBounds(),
@@ -157,12 +163,15 @@ private fun PlateRow(
             )
         }
 
+        // 主卦中已显现的六亲，用于判断伏神六亲是否在主卦里出现
+        val fuMissing = fu.liuQin !in originalLiuQinSet
+
         // 主伏（伏神六亲·天干·地支）
         Box(
             modifier = Modifier.weight(1f).clipToBounds(),
             contentAlignment = Alignment.Center
         ) {
-            LineText(fu, isFu = true)
+            LineText(fu, isFu = true, missing = fuMissing)
         }
 
         // 本卦：爻条 + 六亲（天干地支）
@@ -222,7 +231,7 @@ private fun PlateRow(
             }
         }
 
-        // 变伏（伏神六亲·天干·地支）
+        // 变伏（伏神六亲·天干·地支）：始终绿色，不按主卦缺显判断
         Box(
             modifier = Modifier.weight(1f).clipToBounds(),
             contentAlignment = Alignment.Center
@@ -234,17 +243,22 @@ private fun PlateRow(
 
 /**
  * 六亲·天干·地支描述；伏神用绿色，本卦/变卦用黑色，世/应为蓝色小字。
+ * 伏神的六亲若在卦中（本卦+变卦）未出现，则以红色显示，提示“伏神无对应”。
  * 文字放入受约束且裁切的格子中，超宽则裁切，绝不重叠到相邻列。
  */
 @Composable
-private fun LineText(line: LineInfo, isFu: Boolean) {
+private fun LineText(line: LineInfo, isFu: Boolean, missing: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "${line.liuQin.cn}${line.tianGan}${line.diZhi.cn}",
             style = lineTextStyle,
             maxLines = 1,
             softWrap = false,
-            color = if (isFu) fuColorValue else MaterialTheme.colorScheme.onSurface
+            color = when {
+                isFu && missing -> fuMissingColorValue
+                isFu -> fuColorValue
+                else -> MaterialTheme.colorScheme.onSurface
+            }
         )
         if (!isFu && line.shiYing != ShiYingType.NONE) {
             Spacer(Modifier.width(1.dp))

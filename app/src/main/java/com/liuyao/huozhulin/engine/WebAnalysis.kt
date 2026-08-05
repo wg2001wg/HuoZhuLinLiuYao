@@ -27,6 +27,9 @@ object WebAnalysis {
         val apiKey: String = ""
     )
 
+    /** 默认 API Key（用户未配置时使用，可在设置页覆盖） */
+    const val DEFAULT_API_KEY = "c8911f7e1e064cada93094a1b89fed80.PB2X8egYZFbiF35b"
+
     /** 可用模型列表：选择后自动填充对应的兼容 OpenAI 格式的接口地址与推荐 Key（若用户未手动填写） */
     val MODEL_OPTIONS: List<ModelOption> = listOf(
         ModelOption("智谱 GLM-4.7-Flash", "GLM-4.7-Flash", "https://open.bigmodel.cn/api/paas/v4/", DEFAULT_API_KEY),
@@ -55,9 +58,6 @@ object WebAnalysis {
 
     /** 默认模型名 */
     const val DEFAULT_MODEL = "GLM-4.7-Flash"
-
-    /** 默认 API Key（用户未配置时使用，可在设置页覆盖） */
-    const val DEFAULT_API_KEY = "c8911f7e1e064cada93094a1b89fed80.PB2X8egYZFbiF35b"
 
     /** 建立连接超时（毫秒） */
     private const val CONNECT_TIMEOUT_MS = 30_000
