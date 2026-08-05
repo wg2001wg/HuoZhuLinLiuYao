@@ -2,6 +2,8 @@
 
 基于京房纳甲筮法（火珠林）的 Android 六爻排盘应用，使用 **Kotlin + Jetpack Compose + Room** 开发。
 
+> 技术栈：Kotlin 1.9.22 · Compose BOM 2024.02.00 · Room 2.6.1 · minSdk 24（Android 7.0+）/ compileSdk & targetSdk 36 · Gradle 8.13（AGP 8.11.1）· 通过项目内置 `gradlew` / `gradlew.bat` 构建。
+
 ## 功能
 - **七种起卦方式**（`engine/CastEngine.kt`）
   - 随机卦：软件模拟手摇，随机生成 6 爻（老阴/老阳为动爻）
@@ -20,23 +22,31 @@
 
 ## 目录结构
 ```
-app/src/main/java/com/example/huozhulin/
-├── data/
-│   ├── model/        # 五行/干支/六亲/六神/八卦/六十四卦/排盘结构
-│   ├── Yijing.kt     # 周易卦辞爻辞
-│   └── local/        # Room 实体/DAO/数据库
-├── engine/
-│   ├── CastEngine.kt     # 七种起卦引擎
-│   ├── PaiPanEngine.kt   # 装卦排盘引擎（纳甲/六亲/六神/世应/动变/伏神）
-│   ├── GanZhiCalendar.kt # 公历→年月日时干支
-│   ├── LunarCalendar.kt  # 农历/节气换算
-│   └── ShenSha.kt        # 旬空等神煞计算
-├── ui/
-│   ├── screens/      # 起卦(CastScreens)/结果(ResultScreen)/历史(HistoryScreen)
-│   ├── components/   # HexagramView、PlateTable 爻图与排盘表格
-│   └── theme/        # 主题
-├── viewmodel/        # PaiPanViewModel
-└── MainActivity.kt   # 导航宿主
+HuoZhuLinLiuYao/
+├── app/
+│   └── src/main/java/com/example/huozhulin/
+│       ├── data/
+│       │   ├── model/        # Hexagram / Trigram / Symbols / Plate 等五行干支结构
+│       │   ├── Yijing.kt     # 周易卦辞爻辞（王弼本）
+│       │   └── local/        # Room：AppDatabase / RecordDao / RecordEntity
+│       ├── engine/
+│       │   ├── CastEngine.kt     # 七种起卦引擎
+│       │   ├── PaiPanEngine.kt   # 装卦排盘引擎（纳甲/六亲/六神/世应/动变/伏神）
+│       │   ├── GanZhiCalendar.kt # 公历→年月日时干支
+│       │   ├── LunarCalendar.kt  # 农历/节气换算
+│       │   └── ShenSha.kt        # 旬空等神煞计算
+│       ├── ui/
+│       │   ├── screens/      # 起卦(CastScreens)/结果(ResultScreen)/历史(HistoryScreen)
+│       │   ├── components/   # HexagramView、PlateTable 爻图与排盘表格
+│       │   └── theme/        # 主题(Theme.kt)
+│       ├── viewmodel/        # PaiPanViewModel
+│       └── MainActivity.kt   # 导航宿主（Compose Navigation）
+├── keystore/release.jks      # release 签名密钥（见下「构建 Release 包」）
+├── generated-images/         # AI 生成的图标 / 素材预览
+├── icon_base.png             # 应用图标底图
+├── gradlew / gradlew.bat     # Gradle Wrapper 脚本（已内置）
+├── verify_fix.py / verify_gz.py  # Python 参考实现，用于引擎逻辑对照校验
+└── build.gradle.kts / settings.gradle.kts / gradle.properties
 ```
 
 ## 本地逻辑验证
@@ -49,15 +59,16 @@ python verify_gz.py    # 校验干支（年月日时）推算
 
 ## 在 Android Studio 中打开与运行
 1. 用 **Android Studio (Hedgehog / Iguana 及以上)** 打开本目录（`File → Open` 选择 `HuozhulinLiuyao`）。
-2. 首次打开会触发 Gradle 同步：
-   - 若提示缺少 Gradle wrapper，选择「使用 Android Studio 自带的 Gradle」或本地已安装的 Gradle 同步即可；
-   - 也可在已安装 Gradle 的终端执行 `gradle wrapper` 生成 `gradle-wrapper.jar` 后再同步。
+2. 项目已内置 Gradle Wrapper（`gradlew` / `gradlew.bat` / `gradle-wrapper.jar`，Gradle 8.13），首次打开会自动同步。
 3. 连接安卓设备或启动模拟器（minSdk 24，Android 7.0+）。
 4. 点击 **Run ▶** 或 `Shift+F10` 安装运行。
 
 ## 构建 APK
-- 调试包：`Build → Build Bundle(s) / APK(s) → Build APK(s)`
-- 或命令行：`./gradlew assembleDebug`
+- 调试包：`./gradlew assembleDebug`（或 `Build → Build Bundle(s)/APK(s) → Build APK(s)`）
+- Release 包（已配置签名，`app/build.gradle.kts` 的 `signingConfigs.release`）：
+  - 密钥库位于 `keystore/release.jks`，alias `huozhulin`，密码见 `app/build.gradle.kts`。
+  - 构建命令：`./gradlew assembleRelease`
+  - 产物：`app/build/outputs/apk/release/app-release.apk`
 
 ## 说明
 - 排盘结果中的五行旺衰/旬空依赖所选「日干支 / 月建」，可在排盘结果页调整；不填月建则不显示旺衰。
