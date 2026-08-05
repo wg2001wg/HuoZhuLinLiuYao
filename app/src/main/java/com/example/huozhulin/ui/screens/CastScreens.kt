@@ -367,14 +367,6 @@ fun NumberScreen(nav: NavHostController, vm: PaiPanViewModel) {
                 vm.setCast(l, m)
                 nav.navigate("result")
             }
-            OutlinedButton(
-                onClick = {
-                    val (l, m) = CastEngine.timeCast()
-                    vm.setCast(l, m)
-                    nav.navigate("result")
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("用当前时间（兼容旧版）") }
         }
     }
 }
