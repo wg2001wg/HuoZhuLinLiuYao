@@ -41,7 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -406,7 +410,7 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                 }
             }
             is AnalysisState.Success -> {
-                Text(s.result.content, style = MaterialTheme.typography.bodyMedium)
+                MarkdownContent(s.result.content)
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "以上内容由 AI 依据传统六爻理论生成，仅供参考。",
@@ -487,4 +491,111 @@ private fun formatDateTime(ts: Long): String {
     val mm = c.get(Calendar.MINUTE)
     val ss = c.get(Calendar.SECOND)
     return String.format("%04d-%02d-%02d %02d:%02d:%02d", y, m, d, hh, mm, ss)
+}
+
+/** Markdown 语法块：用于把 AI 返回的 Markdown 文本解析成可排版结构 */
+private sealed interface MarkdownBlock {
+    data class Heading(val level: Int, val text: String) : MarkdownBlock
+    data class Bullet(val text: String) : MarkdownBlock
+    data class Paragraph(val text: String) : MarkdownBlock
+}
+
+/** 解析简单 Markdown：标题、无序列表、普通段落 */
+private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
+    val lines = content.lines()
+    val blocks = mutableListOf<MarkdownBlock>()
+    val paragraphBuffer = StringBuilder()
+
+    fun flushParagraph() {
+        if (paragraphBuffer.isNotEmpty()) {
+            blocks.add(MarkdownBlock.Paragraph(paragraphBuffer.toString().trim()))
+            paragraphBuffer.clear()
+        }
+    }
+
+    for (rawLine in lines) {
+        val line = rawLine.trimEnd()
+        if (line.isBlank()) {
+            flushParagraph()
+            continue
+        }
+
+        val headingMatch = Regex("""^(#{1,6})\s+(.*)$""").find(line)
+        if (headingMatch != null) {
+            flushParagraph()
+            blocks.add(
+                MarkdownBlock.Heading(
+                    headingMatch.groupValues[1].length,
+                    headingMatch.groupValues[2].trim()
+                )
+            )
+            continue
+        }
+
+        val bulletMatch = Regex("""^[*\-+]\s+(.*)$""").find(line)
+        if (bulletMatch != null) {
+            flushParagraph()
+            blocks.add(MarkdownBlock.Bullet(bulletMatch.groupValues[1].trim()))
+            continue
+        }
+
+        if (paragraphBuffer.isNotEmpty()) paragraphBuffer.append("\n")
+        paragraphBuffer.append(line)
+    }
+    flushParagraph()
+    return blocks
+}
+
+/** 把字符串中的 **text** 渲染为加粗样式 */
+private fun String.withBold(): AnnotatedString = buildAnnotatedString {
+    val regex = Regex("""\*\*(.+?)\*\*""")
+    var cursor = 0
+    regex.findAll(this@withBold).forEach { match ->
+        append(this@withBold.substring(cursor, match.range.first))
+        pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        append(match.groupValues[1])
+        pop()
+        cursor = match.range.last + 1
+    }
+    append(this@withBold.substring(cursor))
+}
+
+/** 渲染 Markdown 内容到 Compose，支持标题、列表、加粗 */
+@Composable
+private fun MarkdownContent(content: String, modifier: Modifier = Modifier) {
+    val blocks = remember(content) { parseMarkdownBlocks(content) }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownBlock.Heading -> {
+                    val style = when (block.level) {
+                        1 -> MaterialTheme.typography.headlineSmall
+                        2 -> MaterialTheme.typography.titleLarge
+                        else -> MaterialTheme.typography.titleMedium
+                    }
+                    Text(
+                        text = block.text.withBold(),
+                        style = style,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                is MarkdownBlock.Bullet -> {
+                    Row {
+                        Text("• ", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = block.text.withBold(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                is MarkdownBlock.Paragraph -> {
+                    Text(
+                        text = block.text.withBold(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+    }
 }
