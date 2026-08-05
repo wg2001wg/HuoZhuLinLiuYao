@@ -9,23 +9,26 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * 联网解析：调用智谱 GLM-4.7-Flash 免费大模型对卦象进行智能解读。
+ * AI 解析：调用大模型联网对卦象进行智能解读，替代原有的本地「系统解析」。
  *
- * 智谱 GLM 接口与 OpenAI 兼容：
+ * 默认使用智谱 GLM-4.7-Flash（免费），接口与 OpenAI Chat Completions 格式兼容：
  *   POST https://open.bigmodel.cn/api/paas/v4/chat/completions
  *   Authorization: Bearer <API_KEY>
  *
- * 如需自定义（例如其它兼容 OpenAI 格式的模型），可通过 baseUrl 参数覆盖。
+ * 用户可在设置页自定义 API Key、接口地址与模型名，以对接任意兼容 OpenAI 格式的模型。
  */
 object WebAnalysis {
 
+    /** 默认接口地址（智谱开放平台，OpenAI 兼容格式） */
     const val DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    const val DEFAULT_MODEL = "glm-4.7-flash"
+
+    /** 默认模型名 */
+    const val DEFAULT_MODEL = "GLM-4.7-Flash"
 
     /** 默认 API Key（用户未配置时使用，可在设置页覆盖） */
     const val DEFAULT_API_KEY = "c8911f7e1e064cada93094a1b89fed80.PB2X8egYZFbiF35b"
 
-    /** 联网解析结果包装 */
+    /** AI 解析结果包装 */
     data class AnalysisResult(
         val content: String,        // 模型返回的正文
         val model: String = DEFAULT_MODEL,
@@ -42,9 +45,19 @@ object WebAnalysis {
         val sb = StringBuilder()
         sb.append("我是一位研习火珠林六爻（纳甲筮法）的爱好者，请基于传统六爻理论，对我的起卦结果做专业、客观的分析与建议。\n\n")
         sb.append("【排盘信息】\n")
-        sb.append("本卦：${result.original.name}\n")
+        sb.append("本卦：${result.original.name}，属${result.original.hexagram.palace.cnName}宫（${result.original.hexagram.palaceElement.cn}）\n")
         if (result.hasChanged) sb.append("变卦：${result.changed!!.name}\n")
         sb.append("伏神卦（本宫）：${result.fu.name}\n")
+        val shiIdx = result.original.lines.indexOfFirst { it.shiYing == ShiYingType.SHI }
+        val yingIdx = result.original.lines.indexOfFirst { it.shiYing == ShiYingType.YING }
+        if (shiIdx >= 0) sb.append("世爻：第${shiIdx + 1}爻\n")
+        if (yingIdx >= 0) sb.append("应爻：第${yingIdx + 1}爻\n")
+        val dongLines = result.original.lines.filter { it.moving }
+        if (dongLines.isEmpty()) {
+            sb.append("动爻：无（静卦）\n")
+        } else {
+            sb.append("动爻：${dongLines.joinToString("、") { "第${it.position + 1}爻（${it.positionName}）" }}\n")
+        }
         if (result.dayZhi != null) sb.append("日辰：干${result.dayGan}支${result.dayZhi.name}\n")
         if (result.monthZhi != null) sb.append("月建：${result.monthZhi.name}月\n")
         if (result.kongWang.isNotEmpty()) sb.append("旬空：${result.kongWang.joinToString("、") { it.name }}\n")
@@ -77,31 +90,34 @@ object WebAnalysis {
         } else {
             sb.append("\n请结合世应、用神、六亲、六神、动变、日辰月建与旬空，分析此事吉凶趋势，并给出建议。")
         }
+        sb.append("\n请按以下结构作答：一、卦象概述（卦宫、世应、动变）；二、用神与六亲分析；三、六神与神煞参考；四、吉凶断语；五、具体建议。")
         sb.append("回答请使用简体中文，条理清晰、通俗易懂。")
         return sb.toString()
     }
 
     /**
-     * 联网请求 DeepSeek 解读。
-     * @param apiKey    DeepSeek API Key（从设置页保存的 DataStore 读取）
+     * 联网请求大模型进行 AI 解析。
+     * @param apiKey    API Key（从设置页保存的 DataStore 读取，为空时由调用方回落到 [DEFAULT_API_KEY]）
      * @param prompt    提示文本（可由 [buildPrompt] 生成）
-     * @param baseUrl   可自定义接口地址（兼容 OpenAI 格式），默认 DeepSeek 官方
-     * @param model     模型名，默认 deepseek-chat
+     * @param baseUrl   可自定义接口地址（兼容 OpenAI 格式），默认智谱开放平台
+     * @param model     可自定义模型名，默认 [DEFAULT_MODEL]
      */
     fun analyze(apiKey: String, prompt: String, baseUrl: String = DEFAULT_BASE_URL, model: String = DEFAULT_MODEL): String {
-        val url = URL(baseUrl)
+        val url = URL(baseUrl.trim().ifBlank { DEFAULT_BASE_URL })
+        val useModel = model.trim().ifBlank { DEFAULT_MODEL }
+        val useKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
         val conn = url.openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("Authorization", "Bearer $useKey")
             conn.setRequestProperty("Accept", "application/json")
             conn.doOutput = true
             conn.connectTimeout = 30000
             conn.readTimeout = 60000
 
             val body = JSONObject().apply {
-                put("model", model)
+                put("model", useModel)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "user")
@@ -126,7 +142,7 @@ object WebAnalysis {
             }
             parseContent(respText)
         } catch (e: Exception) {
-            "联网解析出错：${e.message}"
+            "AI解析出错：${e.message}"
         } finally {
             conn.disconnect()
         }

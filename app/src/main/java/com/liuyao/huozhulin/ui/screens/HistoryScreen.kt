@@ -76,6 +76,7 @@ fun HistoryScreen(nav: NavHostController, vm: PaiPanViewModel) {
                     rec = rec,
                     apiKey = vm.apiKey.collectAsState().value,
                     baseUrl = vm.baseUrl.collectAsState().value,
+                    model = vm.model.collectAsState().value,
                     onClick = {
                         vm.loadFromRecord(rec)
                         nav.navigate("result")
@@ -94,6 +95,7 @@ private fun HistoryCard(
     rec: RecordEntity,
     apiKey: String,
     baseUrl: String,
+    model: String,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -129,7 +131,7 @@ private fun HistoryCard(
                     IconButton(onClick = {
                         expanded = true
                         if (resultText == null && errorText == null) {
-                            runAiAnalysis({ vm.buildAiPrompt(rec) }, apiKey, baseUrl) { state ->
+                            runAiAnalysis({ vm.buildAiPrompt(rec) }, apiKey, baseUrl, model) { state ->
                                 when (state) {
                                     is AiState.Loading -> loading = true
                                     is AiState.Success -> {
@@ -146,7 +148,7 @@ private fun HistoryCard(
                     }) {
                         Icon(
                             Icons.Filled.Psychology,
-                            contentDescription = "AI 解读",
+                            contentDescription = "AI解析",
                             tint = MaterialTheme.colorScheme.secondary
                         )
                     }
@@ -168,7 +170,7 @@ private fun HistoryCard(
                             .padding(10.dp)
                     ) {
                     Text(
-                        "AI 联网解读（DeepSeek）",
+                        "AI解析（${model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }}）",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.secondary
                     )
@@ -179,10 +181,10 @@ private fun HistoryCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                            Text("正在联网请求 DeepSeek 解读…", style = MaterialTheme.typography.bodySmall)
+                            Text("正在联网 AI 解析…", style = MaterialTheme.typography.bodySmall)
                         }
                         errorText != null -> Text(
-                            "AI 解读暂不可用：$errorText",
+                            "AI解析失败：$errorText",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -190,12 +192,12 @@ private fun HistoryCard(
                             resultText!!,
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        else -> Text("点击上方图标获取 AI 解读。", style = MaterialTheme.typography.bodySmall)
+                        else -> Text("点击上方图标开始 AI解析。", style = MaterialTheme.typography.bodySmall)
                     }
-                    if (errorText != null && errorText!!.contains("DeepSeek API Key")) {
+                    if (errorText != null) {
                         Spacer(Modifier.height(6.dp))
                         Button(onClick = { nav.navigate("settings") }) {
-                            Text("前往设置 API Key")
+                            Text("前往 AI解析设置")
                         }
                     }
                 }
@@ -204,7 +206,7 @@ private fun HistoryCard(
     }
 }
 
-// 简单的 AI 解析状态机
+// 简单的 AI解析状态机
 private sealed class AiState {
     object Loading : AiState()
     data class Success(val text: String) : AiState()
@@ -215,10 +217,13 @@ private fun runAiAnalysis(
     buildPrompt: () -> String?,
     apiKey: String,
     baseUrl: String,
+    model: String,
     onState: (AiState) -> Unit
 ) {
-    // 未配置 Key → 使用内置默认 Key
+    // 未配置时使用内置默认值
     val key = apiKey.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
+    val url = baseUrl.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
+    val mdl = model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
     val prompt = buildPrompt()
     if (prompt == null) {
         onState(AiState.Error("该记录缺少完整排盘数据，无法重建卦象。"))
@@ -227,9 +232,9 @@ private fun runAiAnalysis(
     onState(AiState.Loading)
     CoroutineScope(Dispatchers.Main).launch {
         val text = withContext(Dispatchers.IO) {
-            WebAnalysis.analyze(key, prompt, baseUrl.ifBlank { WebAnalysis.DEFAULT_BASE_URL })
+            WebAnalysis.analyze(key, prompt, url, mdl)
         }
-        if (text.startsWith("请求失败") || text.startsWith("联网解析出错")) {
+        if (text.startsWith("请求失败") || text.startsWith("AI解析出错")) {
             onState(AiState.Error(text))
         } else {
             onState(AiState.Success(text))

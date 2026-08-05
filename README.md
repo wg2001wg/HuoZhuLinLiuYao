@@ -19,10 +19,11 @@
   - 旬空（依日干支）、旺相休囚死（依月建，未填月建则不显示旺衰）
 - **经文参考**：内置《周易》六十四卦卦辞 / 爻辞（`data/Yijing.kt`，王弼本）
 - **历史记录**：Room 本地保存每次排盘，可回看与删除
-- **AI 联网解读（智谱 GLM-4.7-Flash 免费大模型）**
-  - 在排盘**结果页**或**历史页**一键发起联网解析，调用智谱开放平台的免费 `glm-4.7-flash` 模型，对卦象（世应、用神、六亲、六神、动变、日辰月建、旬空）做专业解读与建议
-  - 默认已内置可用的智谱 GLM-4.7-Flash 免费 Key，未配置时自动使用；也可在应用内**设置页**（`SettingsScreen`）填入自己的 Key 覆盖，使用 **DataStore** 本地持久化
-  - 支持自定义接口地址（兼容 OpenAI 格式），可对接其它免费大模型
+- **AI解析（联网大模型解卦，已取代原「系统解析」）**
+  - 结果页的第二个标签由原本的本地「系统解析」改为 **「AI解析」**，完全由联网大模型解卦
+  - 在排盘**结果页**或**历史页**一键发起 AI解析，对卦象（卦宫、世应、动爻、用神、六亲、六神、动变、日辰月建、旬空）做专业解读与建议
+  - 默认模型 **GLM-4.7-Flash**（智谱免费），已内置可用 Key，开箱即用
+  - 可在**设置页**（`SettingsScreen`）自定义 **API Key / 模型名 / 接口地址**，对接任意兼容 OpenAI Chat Completions 格式的模型；三项均可留空回落默认值，使用 **DataStore** 本地持久化
   - 不阻塞本地排盘
 
 ## 目录结构
@@ -40,7 +41,7 @@ HuoZhuLinLiuYao/
 │       │   ├── GanZhiCalendar.kt # 公历→年月日时干支
 │       │   ├── LunarCalendar.kt  # 农历/节气换算
 │       │   ├── ShenSha.kt        # 旬空等神煞计算
-│       │   └── WebAnalysis.kt    # 联网解析：组装提示词并调用 DeepSeek（OpenAI 兼容）
+│       │   └── WebAnalysis.kt    # AI解析：组装提示词并调用大模型（OpenAI 兼容，默认 GLM-4.7-Flash）
 │       ├── ui/
 │       │   ├── screens/      # 起卦(CastScreens)/结果(ResultScreen)/历史(HistoryScreen)/设置(SettingsScreen)
 │       │   ├── components/   # HexagramView、PlateTable 爻图与排盘表格
@@ -76,12 +77,14 @@ python verify_gz.py    # 校验干支（年月日时）推算
   - 构建命令：`./gradlew assembleRelease`
   - 产物：`app/build/outputs/apk/release/app-release.apk`
 
-## 配置 AI 联网解读
-1. 应用默认已内置可用的**智谱 GLM-4.7-Flash** 免费 Key，直接点击「AI 解读」即可联网解析，无需任何配置。
-2. 如需更换为自己的 Key：注册并登录 [智谱开放平台](https://open.bigmodel.cn)，在「API Keys」页面创建一个 Key。
-3. 在应用首页点击 **「AI 解读设置（GLM-4.7-Flash）」**，粘贴 API Key 并点击保存（也可在结果页右上角齿轮进入）。
-4. 在**结果页**或**历史页**点击「AI 解读」按钮，即会联网请求 GLM-4.7-Flash 对当前卦象进行解读。
-5. 「接口地址」可留空（默认 `https://open.bigmodel.cn/api/paas/v4/chat/completions`），也可填写任何兼容 OpenAI 格式的免费模型地址。
+## 配置 AI解析
+1. 应用默认已内置可用的 **GLM-4.7-Flash**（智谱免费）Key，直接点击「AI解析」即可使用，无需任何配置。
+2. 如需换用自己的模型：在应用首页点击 **「AI解析设置」**（也可在结果页 AI解析面板右上角齿轮进入），可配置三项：
+   - **API Key**：留空使用内置默认 Key；如用智谱可在 [智谱开放平台](https://open.bigmodel.cn) 的「API Keys」页面创建。
+   - **模型名**：留空默认 `GLM-4.7-Flash`，可填写任意自定义模型（如 `deepseek-chat`、`gpt-4o-mini`、`qwen-plus` 等）。
+   - **接口地址**：留空默认 `https://open.bigmodel.cn/api/paas/v4/chat/completions`，可填写任何兼容 OpenAI Chat Completions 格式的地址。
+3. 点击「保存」生效；点击「恢复默认」可清空三项回到内置默认配置。
+4. 在**结果页**切到「AI解析」标签，或在**历史页**点击卡片上的解析图标，即会联网请求所配置的模型对当前卦象进行解读。
 
 > 提示：内置默认 Key 为共用免费额度，若提示额度用尽可自行注册替换；应用仅在本地组装排盘文本后发送给模型，不会上传其它信息。
 

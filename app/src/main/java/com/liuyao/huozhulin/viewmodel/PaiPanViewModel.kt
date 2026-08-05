@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 联网解析的状态机 */
+/** AI 解析的状态机 */
 sealed interface AnalysisState {
     data object Idle : AnalysisState
     data object Loading : AnalysisState
@@ -37,22 +37,27 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).dao()
     private val appContext = app.applicationContext
 
-    /** 联网解析状态 */
+    /** AI 解析状态 */
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState
 
-    /** DeepSeek API Key（从 DataStore 读取，用户可在设置页配置） */
+    /** AI 模型 API Key（从 DataStore 读取，用户可在设置页配置），为空则用内置默认 Key */
     private val _apiKey = MutableStateFlow("")
     val apiKey: StateFlow<String> = _apiKey
 
-    /** 自定义接口地址（兼容 OpenAI 格式），为空则用 DeepSeek 官方默认 */
+    /** 自定义接口地址（兼容 OpenAI 格式），为空则用默认地址 */
     private val _baseUrl = MutableStateFlow("")
     val baseUrl: StateFlow<String> = _baseUrl
+
+    /** 自定义模型名，为空则用默认模型 GLM-4.7-Flash */
+    private val _model = MutableStateFlow("")
+    val model: StateFlow<String> = _model
 
     init {
         viewModelScope.launch {
             _apiKey.value = SettingsDataStore.apiKeyFlow(appContext).first()
             _baseUrl.value = SettingsDataStore.baseUrlFlow(appContext).first()
+            _model.value = SettingsDataStore.modelFlow(appContext).first()
         }
     }
 
@@ -93,19 +98,17 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 由 UI（系统解析面板中的按钮）触发联网解析。
-     * 仅当排盘结果已就绪时执行；网络异常时降级为本地兜底，不阻塞主流程。
-     */
-    /**
-     * 由 UI（结果页/历史页的「AI 解读」按钮）触发联网解析。
-     * 调用智谱 GLM-4.7-Flash 免费大模型对卦象进行解读。
-     * 用户未配置 Key 时，自动使用内置默认 Key（可在设置页覆盖）。
+     * 由 UI（结果页「AI解析」面板 / 历史页按钮）触发联网 AI 解析。
+     * 默认调用 GLM-4.7-Flash，用户可在设置页自定义 API Key、接口地址与模型名。
+     * 仅当排盘结果已就绪时执行；不阻塞本地排盘主流程。
      */
     fun fetchAnalysis() {
         val r = result.value ?: return
         if (_analysisState.value is AnalysisState.Loading) return
-        // 未配置 Key → 使用内置默认 Key
+        // 未配置时使用内置默认值
         val key = _apiKey.value.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
+        val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
+        val mdl = _model.value.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
         // 组装提示词：将卦主与问事一并发送给 AI（问事为空/未填写则不发送）
         val prompt = WebAnalysis.buildPrompt(
             r,
@@ -113,24 +116,26 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             wenShi = wenShi.value
         )
         _analysisState.value = AnalysisState.Loading
-        val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
         viewModelScope.launch {
             val res = kotlin.runCatching {
-                withContext(Dispatchers.IO) { WebAnalysis.analyze(key, prompt, url) }
+                withContext(Dispatchers.IO) { WebAnalysis.analyze(key, prompt, url, mdl) }
             }
-            if (res.isSuccess) {
+            val text = res.getOrNull()
+            if (res.isSuccess && text != null &&
+                !text.startsWith("请求失败") && !text.startsWith("AI解析出错")
+            ) {
                 _analysisState.value = AnalysisState.Success(
-                    AnalysisResult(content = res.getOrThrow(), model = WebAnalysis.DEFAULT_MODEL)
+                    AnalysisResult(content = text, model = mdl)
                 )
             } else {
                 _analysisState.value = AnalysisState.Error(
-                    res.exceptionOrNull()?.message ?: "未知错误"
+                    text ?: res.exceptionOrNull()?.message ?: "未知错误"
                 )
             }
         }
     }
 
-    /** 保存 DeepSeek API Key（同时写入 DataStore 与内存 StateFlow） */
+    /** 保存 AI 模型 API Key（同时写入 DataStore 与内存 StateFlow） */
     fun saveApiKey(key: String) {
         val trimmed = key.trim()
         _apiKey.value = trimmed
@@ -142,6 +147,13 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         val trimmed = url.trim()
         _baseUrl.value = trimmed
         viewModelScope.launch { SettingsDataStore.saveBaseUrl(appContext, trimmed) }
+    }
+
+    /** 保存自定义模型名 */
+    fun saveModel(model: String) {
+        val trimmed = model.trim()
+        _model.value = trimmed
+        viewModelScope.launch { SettingsDataStore.saveModel(appContext, trimmed) }
     }
 
     fun saveCurrent(): kotlinx.coroutines.Job = viewModelScope.launch {
@@ -175,8 +187,8 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 由历史记录重建排盘并生成给 DeepSeek 的提示文本。
-     * 用于历史页的「AI 解读」，无需跳转结果页。
+     * 由历史记录重建排盘并生成给 AI 模型的提示文本。
+     * 用于历史页的「AI解析」，无需跳转结果页。
      * @return 提示文本；若记录数据不完整无法重建则返回 null
      */
     fun buildAiPrompt(rec: RecordEntity): String? {

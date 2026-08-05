@@ -46,12 +46,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.liuyao.huozhulin.data.model.DiZhi
-import com.liuyao.huozhulin.data.model.PaiPanResult
 import com.liuyao.huozhulin.data.model.kongWang
 import com.liuyao.huozhulin.engine.GanZhi
 import com.liuyao.huozhulin.engine.GanZhiCalendar
 import com.liuyao.huozhulin.engine.LunarCalendar
 import com.liuyao.huozhulin.engine.ShenSha
+import com.liuyao.huozhulin.engine.WebAnalysis
 import com.liuyao.huozhulin.ui.components.PlateTable
 import com.liuyao.huozhulin.viewmodel.AnalysisState
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
@@ -200,12 +200,12 @@ fun ResultScreen(nav: NavHostController, vm: PaiPanViewModel) {
             // ===== 六爻盘 =====
             PlateTable(r)
 
-            // ===== 标签页：爻辞卦象 / 系统解析 =====
+            // ===== 标签页：爻辞卦象 / AI解析 =====
             TabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
 
             when (selectedTab) {
                 0 -> ScripturePanel(r.original.name, r.changed?.name)
-                1 -> SystemAnalysisPanel(nav, vm, r)
+                1 -> AiAnalysisPanel(nav, vm)
             }
 
             // ===== 底部按钮 =====
@@ -250,7 +250,7 @@ private fun InfoCard(content: @Composable ColumnScope.() -> Unit) {
 private fun TabRow(selectedTab: Int, onSelect: (Int) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth()) {
         TabButton("爻辞卦象", selectedTab == 0, Modifier.weight(1f)) { onSelect(0) }
-        TabButton("系统解析", selectedTab == 1, Modifier.weight(1f)) { onSelect(1) }
+        TabButton("AI解析", selectedTab == 1, Modifier.weight(1f)) { onSelect(1) }
     }
 }
 
@@ -315,9 +315,15 @@ private fun HeLuoSection(guaName: String) {
     }
 }
 
+/**
+ * AI解析面板：完全由联网大模型解卦，替代原有的本地「系统解析」。
+ * 默认模型 GLM-4.7-Flash，可在设置页自定义模型 / 接口地址 / API Key。
+ */
 @Composable
-private fun SystemAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel, r: PaiPanResult) {
+private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
     val state by vm.analysisState.collectAsState()
+    val model by vm.model.collectAsState()
+    val currentModel = model.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
 
     Column(
         modifier = Modifier
@@ -328,67 +334,42 @@ private fun SystemAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel, r: 
             )
             .padding(10.dp)
     ) {
-        Text(
-            "系统解析",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(4.dp))
-
-        // —— 本地基础解析（始终展示）——
-        Text(
-            "本卦：${r.original.name}，属${r.original.hexagram.palace.cnName}宫（${r.original.hexagram.palaceElement.cn}）。",
-            style = MaterialTheme.typography.bodySmall
-        )
-        Text(
-            "世爻在${r.original.lines.indexOfFirst { it.shiYing == com.liuyao.huozhulin.data.model.ShiYingType.SHI } + 1}爻，" +
-                    "应爻在${r.original.lines.indexOfFirst { it.shiYing == com.liuyao.huozhulin.data.model.ShiYingType.YING } + 1}爻。",
-            style = MaterialTheme.typography.bodySmall
-        )
-        val dong = r.original.lines.filter { it.moving }
-        if (dong.isEmpty()) {
-            Text("此卦无动爻，为静卦。", style = MaterialTheme.typography.bodySmall)
-        } else {
-            Text(
-                "动爻：${dong.joinToString("、") { "第${it.position + 1}爻（${it.positionName}）" }}。",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        Text(
-            "伏神以本宫卦${r.fu.name}为伏。",
-            style = MaterialTheme.typography.bodySmall
-        )
-        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "AI 联网解读（DeepSeek）",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.secondary
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "AI解析",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "模型：$currentModel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
             Row {
                 IconButton(onClick = { nav.navigate("settings") }) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "前往设置 API Key",
+                        contentDescription = "AI解析设置",
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
                 IconButton(onClick = { vm.fetchAnalysis() }) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新 AI 解读",
+                        contentDescription = "重新解析",
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
 
-        // —— AI 联网解读结果 ——
         when (val s = state) {
             is AnalysisState.Loading -> {
                 Row(
@@ -397,34 +378,51 @@ private fun SystemAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel, r: 
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                    Text("正在联网请求 DeepSeek 解读…", style = MaterialTheme.typography.bodySmall)
+                    Text("正在联网 AI 解析…", style = MaterialTheme.typography.bodySmall)
                 }
             }
             is AnalysisState.Error -> {
                 Text(
-                    "AI 解读暂不可用：${s.message}",
+                    "AI解析失败：${s.message}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(onClick = { vm.fetchAnalysis() }, modifier = Modifier.weight(1f)) {
+                        Text("重试")
+                    }
+                    Button(
+                        onClick = { nav.navigate("settings") },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) { Text("去设置") }
+                }
             }
             is AnalysisState.Success -> {
+                Text(s.result.content, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "模型：${s.result.model}",
+                    "以上内容由 AI 依据传统六爻理论生成，仅供参考。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    s.result.content,
-                    style = MaterialTheme.typography.bodyMedium
-                )
             }
             AnalysisState.Idle -> {
+                Text(
+                    "由 AI 联网结合世应、用神、六亲、六神、动变、日辰月建与旬空进行解卦。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Spacer(Modifier.height(6.dp))
                 Button(
                     onClick = { vm.fetchAnalysis() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("点击获取 AI 解读")
+                    Text("开始 AI解析")
                 }
             }
         }

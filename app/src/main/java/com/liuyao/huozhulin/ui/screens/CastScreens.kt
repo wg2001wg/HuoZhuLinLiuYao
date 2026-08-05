@@ -99,7 +99,7 @@ fun HomeScreen(nav: NavHostController) {
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("AI 解读设置（DeepSeek）")
+                Text("AI解析设置")
             }
         }
     }

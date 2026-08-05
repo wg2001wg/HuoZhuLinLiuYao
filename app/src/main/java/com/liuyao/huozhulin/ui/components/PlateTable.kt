@@ -28,7 +28,7 @@ import com.liuyao.huozhulin.data.model.ShiYingType
 
 /** 六爻表内文字统一字号（固定值，不随结果页整体放大，保证窄屏单列可容纳、不溢出压字） */
 private val lineTextStyle
-    @Composable get() = MaterialTheme.typography.bodySmall.copy(fontSize = 15.sp)
+    @Composable get() = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
 
 /** 参考传统排盘风格配色 */
 private val shenColorValue = Color(0xFF8D6E63)      // 六神：棕褐色
