@@ -10,6 +10,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -39,6 +45,7 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
     var keyInput by remember { mutableStateOf(apiKey) }
     var urlInput by remember { mutableStateOf(baseUrl) }
     var modelInput by remember { mutableStateOf(model) }
+    var modelMenuExpanded by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -77,14 +84,57 @@ fun SettingsScreen(nav: NavHostController, vm: PaiPanViewModel) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
             )
 
-            OutlinedTextField(
-                value = modelInput,
-                onValueChange = { modelInput = it; saved = false },
-                label = { Text("模型名（可选，留空用默认）") },
-                placeholder = { Text(WebAnalysis.DEFAULT_MODEL) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            // 模型名：可输入文本框 + 下拉菜单；选择预设项后自动填充接口地址（仅当用户未手动填写时）
+            ExposedDropdownMenuBox(
+                expanded = modelMenuExpanded,
+                onExpandedChange = { modelMenuExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = modelInput,
+                    onValueChange = { modelInput = it; saved = false; modelMenuExpanded = true },
+                    label = { Text("模型名（可选，留空用默认）") },
+                    placeholder = { Text(WebAnalysis.DEFAULT_MODEL) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    singleLine = true,
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuExpanded)
+                    }
+                )
+                val filter = modelInput.trim()
+                DropdownMenu(
+                    expanded = modelMenuExpanded,
+                    onDismissRequest = { modelMenuExpanded = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("（不指定，使用默认）") },
+                        onClick = {
+                            modelInput = ""
+                            modelMenuExpanded = false
+                        }
+                    )
+                    WebAnalysis.MODEL_OPTIONS
+                        .filter {
+                            filter.isEmpty() || it.display.contains(filter, true) ||
+                                it.model.contains(filter, true)
+                        }
+                        .forEach { opt ->
+                            DropdownMenuItem(
+                                text = { Text(opt.display) },
+                                onClick = {
+                                    modelInput = opt.model
+                                    saved = false
+                                    if (urlInput.trim().isEmpty()) {
+                                        urlInput = opt.baseUrl
+                                    }
+                                    modelMenuExpanded = false
+                                }
+                            )
+                        }
+                }
+            }
 
             OutlinedTextField(
                 value = urlInput,

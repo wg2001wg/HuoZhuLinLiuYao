@@ -19,6 +19,30 @@ import java.net.URLEncoder
  */
 object WebAnalysis {
 
+    /** 预设模型选项：显示名 + 实际模型名 + 对应接口地址 */
+    data class ModelOption(val display: String, val model: String, val baseUrl: String)
+
+    /** 可用模型列表：选择后自动填充对应的兼容 OpenAI 格式的接口地址 */
+    val MODEL_OPTIONS: List<ModelOption> = listOf(
+        ModelOption("智谱 GLM-4.7-Flash", "GLM-4.7-Flash", "https://open.bigmodel.cn/api/paas/v4/"),
+        ModelOption("智谱 GLM-4.6", "GLM-4.6", "https://open.bigmodel.cn/api/paas/v4/"),
+        ModelOption("智谱 GLM-4-Plus", "glm-4-plus", "https://open.bigmodel.cn/api/paas/v4/"),
+        ModelOption("OpenAI GPT-4o", "gpt-4o", "https://api.openai.com/v1/"),
+        ModelOption("OpenAI GPT-4o-mini", "gpt-4o-mini", "https://api.openai.com/v1/"),
+        ModelOption("DeepSeek Chat", "deepseek-chat", "https://api.deepseek.com/v1/"),
+        ModelOption("通义千问 Plus", "qwen-plus", "https://dashscope.aliyuncs.com/compatible-mode/v1/"),
+        ModelOption("Moonshot Kimi", "moonshot-v1-8k", "https://api.moonshot.cn/v1/")
+    )
+
+    /**
+     * 根据模型名（或显示名）查找预设模型，返回对应的接口地址；未匹配时返回 null。
+     */
+    fun defaultBaseUrlForModel(model: String): String? {
+        val m = model.trim()
+        if (m.isEmpty()) return null
+        return MODEL_OPTIONS.firstOrNull { it.model == m || it.display == m }?.baseUrl
+    }
+
     /** 默认接口地址（智谱开放平台，OpenAI 兼容格式） */
     const val DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
