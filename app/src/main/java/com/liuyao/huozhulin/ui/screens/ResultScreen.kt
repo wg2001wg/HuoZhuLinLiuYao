@@ -178,14 +178,34 @@ fun ResultScreen(nav: NavHostController, vm: PaiPanViewModel) {
                     )
                 }
                 fp?.let { four ->
-                    Text(
-                        "干支：${four.year.cn}年  ${four.month.cn}月  ${four.day.cn}日  ${four.hour.cn}时",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "空亡：${xunKongText(four.year)}  ${xunKongText(four.month)}  ${xunKongText(four.day)}  ${xunKongText(four.hour)}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        // 干支与空亡标签左对齐：标签固定宽度，值统一字号，保证两行对齐
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "干支：",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.width(56.dp)
+                            )
+                            Text(
+                                "${four.year.cn}年  ${four.month.cn}月  ${four.day.cn}日  ${four.hour.cn}时",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "空亡：",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.width(56.dp)
+                            )
+                            Text(
+                                "${xunKongText(four.year)}  ${xunKongText(four.month)}  ${xunKongText(four.day)}  ${xunKongText(four.hour)}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
                 Text(
                     "伏神：《火珠林》伏神法",
