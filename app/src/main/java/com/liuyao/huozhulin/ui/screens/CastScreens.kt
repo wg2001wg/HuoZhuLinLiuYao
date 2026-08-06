@@ -299,9 +299,9 @@ fun ManualScreen(nav: NavHostController, vm: PaiPanViewModel) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("依次设置初爻到上爻的阴阳与动静：", style = MaterialTheme.typography.titleSmall)
+            Text("从上到下依次设置上爻到初爻的阴阳与动静：", style = MaterialTheme.typography.titleSmall)
             val names = listOf("初爻", "二爻", "三爻", "四爻", "五爻", "上爻")
-            for (p in 0..5) {
+            for (p in 5 downTo 0) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
