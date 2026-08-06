@@ -92,6 +92,9 @@ object WebAnalysis {
         val isFallback: Boolean = false  // 是否为本地兜底（无 Key / 失败时）
     )
 
+    /** 多轮对话消息 */
+    data class Message(val role: String, val content: String)
+
     /**
      * 将排盘结果整理成给大模型的提示文本。
      * @param result  排盘结果
@@ -167,6 +170,53 @@ object WebAnalysis {
     }
 
     /**
+     * 流式多轮对话：携带历史消息 [messages] 继续与模型交流（例如用户在解析后继续追问）。
+     * 用法与 [analyzeStream] 一致，只是 messages 支持 user/assistant/system 多轮。
+     */
+    fun chatStream(
+        apiKey: String,
+        messages: List<Message>,
+        baseUrl: String = DEFAULT_BASE_URL,
+        model: String = DEFAULT_MODEL,
+        onDelta: (String) -> Unit,
+        onError: (String) -> Unit,
+        onDone: (() -> Unit)? = null
+    ) {
+        val useUrl = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
+        val useModel = model.trim().ifBlank { DEFAULT_MODEL }
+        val useKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
+
+        var lastError = ""
+        var received = false
+        repeat(MAX_RETRY) { attempt ->
+            val result = postRequestStream(useKey, messages, useUrl, useModel,
+                onDelta = { piece ->
+                    received = true
+                    onDelta(piece)
+                }
+            )
+            if (result.text.isEmpty()) { onDone?.invoke(); return }
+            if (result.retryable) {
+                lastError = result.text
+                if (attempt < MAX_RETRY - 1) {
+                    try {
+                        Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        if (received) onDone?.invoke() else onError(lastError)
+                        return
+                    }
+                }
+                return@repeat
+            }
+            if (received) onDone?.invoke() else onError(result.text)
+            onDone?.invoke()
+            return
+        }
+        if (received) onDone?.invoke() else onError(lastError)
+    }
+
+    /**
      * 流式（逐字/逐段）联网请求大模型进行 AI 解析，结果通过 [onDelta] 实时回调，
      * 实现「边生成边显示」的效果，避免用户长时间等待空白。
      *
@@ -229,26 +279,29 @@ object WebAnalysis {
     private data class Attempt(val text: String, val retryable: Boolean = false)
 
     private fun requestOnce(apiKey: String, prompt: String, baseUrl: String, model: String): Attempt {
+        return postRequest(apiKey, listOf(Message("user", prompt)), baseUrl, model, stream = false)
+    }
+
+    /**
+     * 通用请求封装（非流式版）。[messages] 为完整多轮消息列表（含 system/user/assistant）。
+     * 返回模型首条 choice 的正文，或包装好的错误信息。
+     */
+    private fun postRequest(apiKey: String, messages: List<Message>, baseUrl: String, model: String, stream: Boolean): Attempt {
         val url = URL(baseUrl)
-        val useModel = model
-        val useKey = apiKey
         val conn = url.openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            conn.setRequestProperty("Authorization", "Bearer $useKey")
+            conn.setRequestProperty("Authorization", "Bearer $apiKey")
             conn.setRequestProperty("Accept", "application/json")
             conn.doOutput = true
             conn.connectTimeout = CONNECT_TIMEOUT_MS
             conn.readTimeout = READ_TIMEOUT_MS
 
             val body = JSONObject().apply {
-                put("model", useModel)
+                put("model", model)
                 put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", prompt)
-                    })
+                    messages.forEach { put(JSONObject().apply { put("role", it.role); put("content", it.content) }) }
                 })
                 put("temperature", 0.7)
                 put("stream", false)
@@ -300,12 +353,34 @@ object WebAnalysis {
     }
 
     /**
+     * 单次请求（多轮消息版）：与 [requestOnce] 相同，但 messages 由调用方组装，
+     * 用于多轮对话。这里直接复用通用请求逻辑，[messages] 为完整消息列表。
+     */
+    private fun requestOnce(apiKey: String, messages: List<Message>, baseUrl: String, model: String): Attempt {
+        return postRequest(apiKey, messages, baseUrl, model, stream = false)
+    }
+
+    /**
      * 单次流式请求：以 SSE 方式逐行读取响应，将每个 chunk 的增量内容通过 [onDelta] 实时回调。
      * [Attempt.retryable] 为 true 表示属于可重试的临时性错误（429 / 5xx）。
      */
     private fun requestStream(
         apiKey: String,
         prompt: String,
+        baseUrl: String,
+        model: String,
+        onDelta: (String) -> Unit
+    ): Attempt {
+        return postRequestStream(apiKey, listOf(Message("user", prompt)), baseUrl, model, onDelta)
+    }
+
+    /**
+     * 通用流式请求（多轮消息版）。以 SSE 方式逐行读取响应，将每个 chunk 的增量内容通过
+     * [onDelta] 实时回调。[Attempt.retryable] 为 true 表示可重试的临时性错误（429 / 5xx）。
+     */
+    private fun postRequestStream(
+        apiKey: String,
+        messages: List<Message>,
         baseUrl: String,
         model: String,
         onDelta: (String) -> Unit
@@ -325,10 +400,7 @@ object WebAnalysis {
             val body = JSONObject().apply {
                 put("model", model)
                 put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", prompt)
-                    })
+                    messages.forEach { put(JSONObject().apply { put("role", it.role); put("content", it.content) }) }
                 })
                 put("temperature", 0.7)
                 put("stream", true)

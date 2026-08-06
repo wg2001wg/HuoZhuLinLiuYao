@@ -11,10 +11,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -30,6 +37,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +47,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -450,6 +460,15 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                Text(
+                    "继续向 AI 提问",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(8.dp))
+                // 多轮对话直接内嵌在本结果页内，不弹窗
+                ChatSection(vm = vm)
             }
             AnalysisState.Idle -> {
                 Text(
@@ -468,6 +487,93 @@ private fun AiAnalysisPanel(nav: NavHostController, vm: PaiPanViewModel) {
                 ) {
                     Text("开始 AI解析")
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 「继续向 AI 提问」对话区：内嵌在 AI 解析结果页中，展示多轮对话历史并允许用户输入后续问题。
+ * 解析结果作为 system 背景与 assistant 首条回复被带入历史，AI 可据此连续追问。
+ */
+@Composable
+private fun ChatSection(vm: PaiPanViewModel) {
+    val messages by vm.chatMessages.collectAsState()
+    val sending by vm.chatSending.collectAsState()
+    val listState = rememberLazyListState()
+    var input by remember { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    // 新消息到达时自动滚动到底部
+    LaunchedEffect(messages.size, sending) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 320.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(messages.size) { idx ->
+                val msg = messages[idx]
+                if (msg.role == "system") return@items
+                val isUser = msg.role == "user"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                ) {
+                    Surface(
+                        tonalElevation = 2.dp,
+                        color = if (isUser) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(0.85f)
+                    ) {
+                        MarkdownContent(
+                            msg.content,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                placeholder = { Text("输入你的追问…") },
+                enabled = !sending,
+                modifier = Modifier
+                    .weight(1f)
+                    .imePadding(),
+                singleLine = false,
+                maxLines = 4
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    val q = input.trim()
+                    if (q.isNotEmpty() && !sending) {
+                        vm.sendChat(q)
+                        input = ""
+                        keyboard?.hide()
+                    }
+                },
+                enabled = input.trim().isNotEmpty() && !sending
+            ) {
+                if (sending) CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                else Text("发送")
             }
         }
     }

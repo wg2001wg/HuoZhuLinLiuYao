@@ -46,6 +46,13 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState
 
+    /** AI 多轮对话状态：是否正在发送、对话历史（对话区内嵌于 AI 解析结果页） */
+    private val _chatSending = MutableStateFlow(false)
+    val chatSending: StateFlow<Boolean> = _chatSending
+
+    private val _chatMessages = MutableStateFlow<List<WebAnalysis.Message>>(emptyList())
+    val chatMessages: StateFlow<List<WebAnalysis.Message>> = _chatMessages
+
     /** AI 模型 API Key（从 DataStore 读取，用户可在设置页配置），为空则用内置默认 Key */
     private val _apiKey = MutableStateFlow("")
     val apiKey: StateFlow<String> = _apiKey
@@ -130,6 +137,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         monthZhi.value = fp.month.zhi
         // 重新起卦时清空上一次的 AI 解析结果，避免结果页残留旧解析
         _analysisState.value = AnalysisState.Idle
+        // 同时清空上一卦的多轮对话上下文
+        _chatMessages.value = emptyList()
+        _chatSending.value = false
     }
 
     /**
@@ -162,10 +172,66 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 _analysisState.value = AnalysisState.Success(
                     AnalysisResult(content = text, model = mdl)
                 )
+                // 记录首轮对话上下文：将本次卦象提示作为 system，便于用户后续追问
+                _chatMessages.value = listOf(
+                    WebAnalysis.Message("system", prompt),
+                    WebAnalysis.Message("assistant", text)
+                )
             } else {
                 _analysisState.value = AnalysisState.Error(
                     withNetworkHint(text ?: res.exceptionOrNull()?.message ?: "未知错误")
                 )
+            }
+        }
+    }
+
+    /**
+     * 在解析结果基础上与 AI 继续对话（多轮）。[userMsg] 为用户的新问题。
+     * 采用流式输出，逐步把 AI 回复追加到对话历史中实时展示。
+     */
+    fun sendChat(userMsg: String) {
+        val msg = userMsg.trim()
+        if (msg.isEmpty() || _chatSending.value) return
+        // 尚未初始化对话上下文时（如从历史记录载入），先用当前卦象提示词建立 system 背景
+        val base = if (_chatMessages.value.isEmpty()) {
+            val r = result.value ?: return
+            val p = WebAnalysis.buildPrompt(r, guaZhu = guaZhu.value, wenShi = wenShi.value)
+            listOf(WebAnalysis.Message("system", p))
+        } else _chatMessages.value
+        val messages = base + WebAnalysis.Message("user", msg)
+        _chatMessages.value = messages
+        _chatSending.value = true
+
+        val key = _apiKey.value.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
+        val url = _baseUrl.value.trim().ifBlank { WebAnalysis.DEFAULT_BASE_URL }
+        val mdl = _model.value.trim().ifBlank { WebAnalysis.DEFAULT_MODEL }
+        viewModelScope.launch {
+            val sb = StringBuilder()
+            var error: String? = null
+            withContext(Dispatchers.IO) {
+                WebAnalysis.chatStream(
+                    apiKey = key, baseUrl = url, model = mdl, messages = messages,
+                    onDelta = { piece ->
+                        sb.append(piece)
+                        // 实时刷新助手最新一条消息的内容
+                        _chatMessages.value = _chatMessages.value.toMutableList().apply {
+                            val idx = indexOfLast { it.role == "assistant" }
+                            if (idx >= 0) set(idx, WebAnalysis.Message("assistant", sb.toString()))
+                            else add(WebAnalysis.Message("assistant", sb.toString()))
+                        }
+                    },
+                    onError = { error = it }
+                )
+            }
+            _chatSending.value = false
+            if (error != null) {
+                _chatMessages.value = _chatMessages.value + WebAnalysis.Message("assistant", withNetworkHint(error!!))
+            } else {
+                _chatMessages.value = _chatMessages.value.toMutableList().apply {
+                    val idx = indexOfLast { it.role == "assistant" }
+                    if (idx >= 0) set(idx, WebAnalysis.Message("assistant", sb.toString()))
+                    else add(WebAnalysis.Message("assistant", sb.toString()))
+                }
             }
         }
     }
@@ -238,8 +304,29 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         dayGan.value = TianGan.entries.first { it.cn == rec.dayGanCn }
         dayZhi.value = rec.dayZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
         monthZhi.value = rec.monthZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
-        // 载入历史记录时清空上一次的 AI 解析结果，避免残留旧解析
-        _analysisState.value = AnalysisState.Idle
+        // 清空上一卦的多轮对话上下文
+        _chatMessages.value = emptyList()
+        _chatSending.value = false
+        // 若该记录已保存过 AI 解析内容，直接展示历史解析结果，无需重新联网；
+        // 同时把卦象提示词与已保存解析写入对话历史，使「继续提问」可基于旧解析追问。
+        val saved = rec.aiResult
+        if (!saved.isNullOrBlank()) {
+            _analysisState.value = AnalysisState.Success(
+                AnalysisResult(
+                    content = saved,
+                    model = rec.aiModel ?: WebAnalysis.DEFAULT_MODEL,
+                    isFallback = false
+                )
+            )
+            val sysPrompt = buildAiPrompt(rec) ?: ""
+            _chatMessages.value = listOf(
+                WebAnalysis.Message("system", sysPrompt),
+                WebAnalysis.Message("assistant", saved)
+            )
+        } else {
+            // 无历史解析则回到初始态，避免残留旧解析
+            _analysisState.value = AnalysisState.Idle
+        }
     }
 
     /**
