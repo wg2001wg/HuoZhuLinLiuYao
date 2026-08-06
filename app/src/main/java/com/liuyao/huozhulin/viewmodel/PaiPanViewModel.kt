@@ -56,6 +56,8 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     /** AI 多轮对话状态：是否正在发送、对话历史（对话区内嵌于 AI 解析结果页） */
     private val _chatSending = MutableStateFlow(false)
     val chatSending: StateFlow<Boolean> = _chatSending
+    /** 原子防重入标志：避免快速重复点击「发送」导致并发多发起请求 */
+    private val _chatSendingGuard = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private val _chatMessages = MutableStateFlow<List<WebAnalysis.Message>>(emptyList())
     val chatMessages: StateFlow<List<WebAnalysis.Message>> = _chatMessages
@@ -150,6 +152,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         // 同时清空上一卦的多轮对话上下文
         _chatMessages.value = emptyList()
         _chatSending.value = false
+        _chatSendingGuard.set(false)
         // 新起卦不属于任何历史记录，保存时应新建而非覆盖
         currentRecordId = null
     }
@@ -203,7 +206,10 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun sendChat(userMsg: String) {
         val msg = userMsg.trim()
-        if (msg.isEmpty() || _chatSending.value) return
+        if (msg.isEmpty()) return
+        // 原子 CAS 防重入：仅第一个调用能拿到 true 并继续，快速重复点击会被直接拦截
+        if (!_chatSendingGuard.compareAndSet(false, true)) return
+        _chatSending.value = true
         // 尚未初始化对话上下文时（如从历史记录载入），先用当前卦象提示词建立 system 背景
         val base = if (_chatMessages.value.isEmpty()) {
             val r = result.value ?: return
@@ -248,6 +254,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                     set(placeholderIdx, WebAnalysis.Message("assistant", sb.toString()))
                 }
             }
+            // 无论成功/失败/异常均释放标志，允许下一次发送
+            _chatSending.value = false
+            _chatSendingGuard.set(false)
         }
     }
 
@@ -370,6 +379,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         // 清空上一卦的多轮对话上下文
         _chatMessages.value = emptyList()
         _chatSending.value = false
+        _chatSendingGuard.set(false)
         // 若该记录已保存过 AI 解析内容，直接展示历史解析结果，无需重新联网；
         // 同时把卦象提示词与已保存解析/对话写入对话历史，使「继续提问」可基于旧解析追问。
         val saved = rec.aiResult
