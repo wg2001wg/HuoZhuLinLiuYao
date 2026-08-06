@@ -42,6 +42,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).dao()
     private val appContext = app.applicationContext
 
+    /** 对话消息序列化分隔符（role 与 content 之间），content 中不含此控制字符 */
+    private val SEP = "\u0001"
+
     /** AI 解析状态 */
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState
@@ -52,6 +55,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _chatMessages = MutableStateFlow<List<WebAnalysis.Message>>(emptyList())
     val chatMessages: StateFlow<List<WebAnalysis.Message>> = _chatMessages
+
+    /** 当前正在查看的历史记录 id；非 null 时「保存」将覆盖该记录而非新建 */
+    private var currentRecordId: Long? = null
 
     /** AI 模型 API Key（从 DataStore 读取，用户可在设置页配置），为空则用内置默认 Key */
     private val _apiKey = MutableStateFlow("")
@@ -140,6 +146,8 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         // 同时清空上一卦的多轮对话上下文
         _chatMessages.value = emptyList()
         _chatSending.value = false
+        // 新起卦不属于任何历史记录，保存时应新建而非覆盖
+        currentRecordId = null
     }
 
     /**
@@ -198,8 +206,12 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             val p = WebAnalysis.buildPrompt(r, guaZhu = guaZhu.value, wenShi = wenShi.value)
             listOf(WebAnalysis.Message("system", p))
         } else _chatMessages.value
+        // 发送给模型的消息（system + 历史 + 本次提问）
         val messages = base + WebAnalysis.Message("user", msg)
-        _chatMessages.value = messages
+        // 在 UI 中再追加一条空的 assistant 占位，便于流式过程中实时填充，
+        // 且不会覆盖之前已有的提问与回答。
+        val placeholderIdx = messages.size
+        _chatMessages.value = messages + WebAnalysis.Message("assistant", "")
         _chatSending.value = true
 
         val key = _apiKey.value.trim().ifBlank { WebAnalysis.DEFAULT_API_KEY }
@@ -213,11 +225,9 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                     apiKey = key, baseUrl = url, model = mdl, messages = messages,
                     onDelta = { piece ->
                         sb.append(piece)
-                        // 实时刷新助手最新一条消息的内容
+                        // 始终更新占位这条 assistant 消息，不触碰之前的问答
                         _chatMessages.value = _chatMessages.value.toMutableList().apply {
-                            val idx = indexOfLast { it.role == "assistant" }
-                            if (idx >= 0) set(idx, WebAnalysis.Message("assistant", sb.toString()))
-                            else add(WebAnalysis.Message("assistant", sb.toString()))
+                            set(placeholderIdx, WebAnalysis.Message("assistant", sb.toString()))
                         }
                     },
                     onError = { error = it }
@@ -225,12 +235,13 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
             }
             _chatSending.value = false
             if (error != null) {
-                _chatMessages.value = _chatMessages.value + WebAnalysis.Message("assistant", withNetworkHint(error!!))
+                // 出错时把占位替换为错误提示，仍作为一条独立消息保留在对话中
+                _chatMessages.value = _chatMessages.value.toMutableList().apply {
+                    set(placeholderIdx, WebAnalysis.Message("assistant", withNetworkHint(error!!)))
+                }
             } else {
                 _chatMessages.value = _chatMessages.value.toMutableList().apply {
-                    val idx = indexOfLast { it.role == "assistant" }
-                    if (idx >= 0) set(idx, WebAnalysis.Message("assistant", sb.toString()))
-                    else add(WebAnalysis.Message("assistant", sb.toString()))
+                    set(placeholderIdx, WebAnalysis.Message("assistant", sb.toString()))
                 }
             }
         }
@@ -276,20 +287,57 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         val ai = _analysisState.value
         val aiResult = if (ai is AnalysisState.Success) ai.result.content else null
         val aiModel = if (ai is AnalysisState.Success) ai.result.model else null
-        val rec = RecordEntity(
-            timestamp = System.currentTimeMillis(),
-            originalName = r.original.name,
-            changedName = r.changed?.name,
-            linesStr = r.original.lines.joinToString("") { if (it.yang) "1" else "0" },
-            movingStr = r.original.lines.joinToString("") { if (it.moving) "1" else "0" },
-            dayGanCn = r.dayGan.cn,
-            dayZhiCn = r.dayZhi?.cn,
-            monthZhiCn = r.monthZhi?.cn,
-            note = "",
-            aiResult = aiResult,
-            aiModel = aiModel
-        )
-        dao.insert(rec)
+        // 将用户与 AI 的继续提问对话（仅 user/assistant）序列化保存
+        val aiChat = serializeChat(_chatMessages.value)
+        val existingId = currentRecordId
+        val existing = if (existingId != null) dao.getById(existingId) else null
+        val linesStr = r.original.lines.joinToString("") { if (it.yang) "1" else "0" }
+        val movingStr = r.original.lines.joinToString("") { if (it.moving) "1" else "0" }
+        if (existing != null) {
+            // 从历史记录进入：覆盖更新该记录（保留原备注，刷新卦象与 AI 内容）
+            dao.updateRecord(
+                id = existing.id,
+                timestamp = existing.timestamp,
+                originalName = r.original.name,
+                changedName = r.changed?.name,
+                linesStr = linesStr,
+                movingStr = movingStr,
+                dayGanCn = r.dayGan.cn,
+                dayZhiCn = r.dayZhi?.cn,
+                monthZhiCn = r.monthZhi?.cn,
+                note = existing.note,
+                aiResult = aiResult,
+                aiModel = aiModel,
+                aiChat = aiChat
+            )
+        } else {
+            // 新排盘：新建记录
+            val rec = RecordEntity(
+                timestamp = System.currentTimeMillis(),
+                originalName = r.original.name,
+                changedName = r.changed?.name,
+                linesStr = linesStr,
+                movingStr = movingStr,
+                dayGanCn = r.dayGan.cn,
+                dayZhiCn = r.dayZhi?.cn,
+                monthZhiCn = r.monthZhi?.cn,
+                note = "",
+                aiResult = aiResult,
+                aiModel = aiModel,
+                aiChat = aiChat
+            )
+            val newId = dao.insert(rec)
+            // 记录新插入的记录 id，使后续保存（如修改信息后再次保存）覆盖同一条记录而非新建
+            currentRecordId = newId
+        }
+    }
+
+    /** 将对话历史（仅 user/assistant 消息）序列化为可存储字符串 */
+    private fun serializeChat(messages: List<WebAnalysis.Message>): String? {
+        val parts = messages
+            .filter { it.role == "user" || it.role == "assistant" }
+            .map { "${it.role}${SEP}${it.content}" }
+        return if (parts.isEmpty()) null else parts.joinToString("\n")
     }
 
     fun historyFlow(): Flow<List<RecordEntity>> = dao.getAllFlow()
@@ -308,7 +356,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         _chatMessages.value = emptyList()
         _chatSending.value = false
         // 若该记录已保存过 AI 解析内容，直接展示历史解析结果，无需重新联网；
-        // 同时把卦象提示词与已保存解析写入对话历史，使「继续提问」可基于旧解析追问。
+        // 同时把卦象提示词与已保存解析/对话写入对话历史，使「继续提问」可基于旧解析追问。
         val saved = rec.aiResult
         if (!saved.isNullOrBlank()) {
             _analysisState.value = AnalysisState.Success(
@@ -319,14 +367,35 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
             val sysPrompt = buildAiPrompt(rec) ?: ""
-            _chatMessages.value = listOf(
-                WebAnalysis.Message("system", sysPrompt),
-                WebAnalysis.Message("assistant", saved)
-            )
+            // 优先恢复已保存的用户提问对话；否则仅保留首轮解析
+            val restored = restoreChat(rec.aiChat, sysPrompt, saved)
+            _chatMessages.value = restored
         } else {
             // 无历史解析则回到初始态，避免残留旧解析
             _analysisState.value = AnalysisState.Idle
         }
+        // 标记当前查看的是该历史记录，保存时将覆盖而非新建
+        currentRecordId = rec.id
+    }
+
+    /** 由已保存的对话字符串恢复对话历史：system 提示 + 用户/AI 问答（若无保存则仅 assistant 首轮解析） */
+    private fun restoreChat(aiChat: String?, sysPrompt: String, aiResult: String): List<WebAnalysis.Message> {
+        val list = mutableListOf(WebAnalysis.Message("system", sysPrompt))
+        if (!aiChat.isNullOrBlank()) {
+            aiChat.lineSequence().forEach { line ->
+                val sep = line.indexOf(SEP)
+                if (sep > 0) {
+                    val role = line.substring(0, sep)
+                    val content = line.substring(sep + SEP.length)
+                    if (role == "user" || role == "assistant") {
+                        list.add(WebAnalysis.Message(role, content))
+                    }
+                }
+            }
+        } else {
+            list.add(WebAnalysis.Message("assistant", aiResult))
+        }
+        return list
     }
 
     /**
@@ -418,7 +487,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshRecordAi(rec: RecordEntity) {
         if (rec.aiResult == null) return
         viewModelScope.launch {
-            dao.updateAi(rec.id, rec.aiResult, rec.aiModel ?: "")
+            dao.updateAi(rec.id, rec.aiResult, rec.aiModel ?: "", rec.aiChat)
         }
     }
 }

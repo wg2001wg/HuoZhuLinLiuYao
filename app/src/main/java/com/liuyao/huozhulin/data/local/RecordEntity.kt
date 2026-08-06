@@ -18,5 +18,7 @@ data class RecordEntity(
     val note: String,
     // AI 解析结果：保存排盘时若已有解析内容则一并落库，下次打开直接查看，无需重新联网
     val aiResult: String? = null,
-    val aiModel: String? = null
+    val aiModel: String? = null,
+    // 用户与 AI 的继续提问对话（仅 user/assistant 问答，不含 system），序列化为 "role\u0001content" 按行
+    val aiChat: String? = null
 )
