@@ -519,7 +519,8 @@ private fun ChatSection(vm: PaiPanViewModel) {
         ) {
             items(messages.size) { idx ->
                 val msg = messages[idx]
-                if (msg.role == "system") return@items
+                // 跳过 system 提示与首轮解析(initial)：首轮解析已在上方「AI 解析」面板完整展示，对话区不再重复显示
+                if (msg.role == "system" || msg.role == "initial") return@items
                 val isUser = msg.role == "user"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
