@@ -128,6 +128,8 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         dayGan.value = fp.day.gan
         dayZhi.value = fp.day.zhi
         monthZhi.value = fp.month.zhi
+        // 重新起卦时清空上一次的 AI 解析结果，避免结果页残留旧解析
+        _analysisState.value = AnalysisState.Idle
     }
 
     /**
@@ -236,6 +238,8 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         dayGan.value = TianGan.entries.first { it.cn == rec.dayGanCn }
         dayZhi.value = rec.dayZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
         monthZhi.value = rec.monthZhiCn?.let { cn -> DiZhi.entries.firstOrNull { it.cn == cn } }
+        // 载入历史记录时清空上一次的 AI 解析结果，避免残留旧解析
+        _analysisState.value = AnalysisState.Idle
     }
 
     /**
