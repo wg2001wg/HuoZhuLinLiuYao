@@ -45,8 +45,6 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     /** 对话消息序列化分隔符：ROLE 用于 role 与 content 之间，REC 用于两条消息之间 */
     private val SEP_ROLE = "\u0001"
     private val SEP_REC = "\u0002"
-    /** 内部角色：首轮 AI 解析。仅作为对话上下文发给模型，不展示在「继续提问」区（已在上方 AI 解析面板展示），也不序列化进 aiChat */
-    private val ROLE_INITIAL = "initial"
     /** content 中出现分隔符时的转义占位（避免与分隔符冲突） */
     private val ESC_ROLE = "\u0003"
     private val ESC_REC = "\u0004"
@@ -412,22 +410,19 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 if (sep > 0) {
                     val role = line.substring(0, sep)
                     val content = unescapeChatContent(line.substring(sep + SEP_ROLE.length))
-                    if (role == "user" || role == "assistant" || role == ROLE_INITIAL) {
+                    if (role == "user" || role == "assistant") {
                         restored.add(WebAnalysis.Message(role, content))
                     }
                 }
             }
-            // 兼容旧数据：若保存的多轮对话未包含首轮解析，则补回首轮（initial），
-            // 避免「继续向 AI 提问」保存后重新打开时首轮解析正文缺失。
-            // 首轮以 ROLE_INITIAL 标记，不展示在对话区（已在上方 AI 解析面板展示）。
-            if (restored.firstOrNull()?.role != ROLE_INITIAL &&
-                restored.firstOrNull()?.role != "assistant" && aiResult.isNotBlank()
-            ) {
-                list.add(WebAnalysis.Message(ROLE_INITIAL, aiResult))
+            // 兼容旧数据：若保存的多轮对话未包含首轮解析，则补回首轮 assistant。
+            // UI 会在展示时跳过这条紧跟 system 的首轮 assistant，避免与上方 AI 解析面板重复。
+            if (restored.firstOrNull()?.role != "assistant" && aiResult.isNotBlank()) {
+                list.add(WebAnalysis.Message("assistant", aiResult))
             }
             list.addAll(restored)
         } else {
-            list.add(WebAnalysis.Message(ROLE_INITIAL, aiResult))
+            list.add(WebAnalysis.Message("assistant", aiResult))
         }
         return list
     }
@@ -505,7 +500,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         if (_chatMessages.value.isEmpty()) {
             _chatMessages.value = listOf(
                 WebAnalysis.Message("system", prompt),
-                WebAnalysis.Message(ROLE_INITIAL, content)
+                WebAnalysis.Message("assistant", content)
             )
         }
     }

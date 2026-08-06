@@ -509,6 +509,24 @@ private fun ChatSection(vm: PaiPanViewModel) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
+    // 对话区只展示用户的追问和对应的 AI 回复；
+    // 跳过 system 提示，以及紧跟 system 的首轮 assistant 解析（已在上方「AI 解析」面板展示）。
+    val visibleMessages = remember(messages) {
+        val result = mutableListOf<WebAnalysis.Message>()
+        var seenUser = false
+        messages.forEach { msg ->
+            when {
+                msg.role == "system" -> { /* 不展示 */ }
+                msg.role == "assistant" && !seenUser -> { /* 首轮解析，不展示 */ }
+                else -> {
+                    if (msg.role == "user") seenUser = true
+                    result.add(msg)
+                }
+            }
+        }
+        result
+    }
+
     Column(Modifier.fillMaxWidth()) {
         LazyColumn(
             state = listState,
@@ -517,10 +535,8 @@ private fun ChatSection(vm: PaiPanViewModel) {
                 .heightIn(max = 320.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages.size) { idx ->
-                val msg = messages[idx]
-                // 跳过 system 提示与首轮解析(initial)：首轮解析已在上方「AI 解析」面板完整展示，对话区不再重复显示
-                if (msg.role == "system" || msg.role == "initial") return@items
+            items(visibleMessages.size) { idx ->
+                val msg = visibleMessages[idx]
                 val isUser = msg.role == "user"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
