@@ -42,8 +42,12 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).dao()
     private val appContext = app.applicationContext
 
-    /** 对话消息序列化分隔符（role 与 content 之间），content 中不含此控制字符 */
-    private val SEP = "\u0001"
+    /** 对话消息序列化分隔符：ROLE 用于 role 与 content 之间，REC 用于两条消息之间 */
+    private val SEP_ROLE = "\u0001"
+    private val SEP_REC = "\u0002"
+    /** content 中出现分隔符时的转义占位（避免与分隔符冲突） */
+    private val ESC_ROLE = "\u0003"
+    private val ESC_REC = "\u0004"
 
     /** AI 解析状态 */
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
@@ -336,9 +340,20 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
     private fun serializeChat(messages: List<WebAnalysis.Message>): String? {
         val parts = messages
             .filter { it.role == "user" || it.role == "assistant" }
-            .map { "${it.role}${SEP}${it.content}" }
-        return if (parts.isEmpty()) null else parts.joinToString("\n")
+            .map { msg ->
+                val content = escapeChatContent(msg.content)
+                "${msg.role}${SEP_ROLE}${content}"
+            }
+        return if (parts.isEmpty()) null else parts.joinToString(SEP_REC)
     }
+
+    /** 转义 content 中的分隔符，避免被误判为记录/字段边界（换行等普通字符不受影响） */
+    private fun escapeChatContent(text: String): String =
+        text.replace(SEP_ROLE, ESC_ROLE).replace(SEP_REC, ESC_REC)
+
+    /** 反转义 */
+    private fun unescapeChatContent(text: String): String =
+        text.replace(ESC_ROLE, SEP_ROLE).replace(ESC_REC, SEP_REC)
 
     fun historyFlow(): Flow<List<RecordEntity>> = dao.getAllFlow()
 
@@ -378,20 +393,34 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         currentRecordId = rec.id
     }
 
-    /** 由已保存的对话字符串恢复对话历史：system 提示 + 用户/AI 问答（若无保存则仅 assistant 首轮解析） */
+    /** 由已保存的对话字符串恢复对话历史：system 提示 + 首轮解析 + 用户/AI 问答 */
     private fun restoreChat(aiChat: String?, sysPrompt: String, aiResult: String): List<WebAnalysis.Message> {
         val list = mutableListOf(WebAnalysis.Message("system", sysPrompt))
         if (!aiChat.isNullOrBlank()) {
-            aiChat.lineSequence().forEach { line ->
-                val sep = line.indexOf(SEP)
+            val restored = mutableListOf<WebAnalysis.Message>()
+            // 按记录分隔符 SEP_REC 切分每条消息，再按 SEP_ROLE 切分 role/content，
+            // 内容中的换行符不会被误拆。兼容旧数据：旧格式用 \n 分隔。
+            val records = if (aiChat.contains(SEP_REC)) {
+                aiChat.split(SEP_REC)
+            } else {
+                aiChat.lineSequence().toList()
+            }
+            records.forEach { line ->
+                val sep = line.indexOf(SEP_ROLE)
                 if (sep > 0) {
                     val role = line.substring(0, sep)
-                    val content = line.substring(sep + SEP.length)
+                    val content = unescapeChatContent(line.substring(sep + SEP_ROLE.length))
                     if (role == "user" || role == "assistant") {
-                        list.add(WebAnalysis.Message(role, content))
+                        restored.add(WebAnalysis.Message(role, content))
                     }
                 }
             }
+            // 兼容旧数据：若保存的多轮对话未包含首轮解析，则补回首轮 assistant，
+            // 避免「继续向 AI 提问」保存后重新打开时首轮解析正文缺失。
+            if (restored.firstOrNull()?.role != "assistant" && aiResult.isNotBlank()) {
+                list.add(WebAnalysis.Message("assistant", aiResult))
+            }
+            list.addAll(restored)
         } else {
             list.add(WebAnalysis.Message("assistant", aiResult))
         }
@@ -415,6 +444,7 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
         _analysisState.value = AnalysisState.Loading
         viewModelScope.launch {
             val sb = StringBuilder()
+            var interruptedMsg: String? = null
             val err = kotlin.runCatching {
                 withContext(Dispatchers.IO) {
                     WebAnalysis.analyzeStream(
@@ -422,23 +452,12 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                         onDelta = { piece ->
                             sb.append(piece)
                             // 首次收到增量即从 Loading 切到 Streaming，后续持续追加
-                            if (_analysisState.value !is AnalysisState.Streaming) {
-                                _analysisState.value = AnalysisState.Streaming(sb.toString())
-                            } else {
-                                _analysisState.value = AnalysisState.Streaming(sb.toString())
-                            }
+                            _analysisState.value = AnalysisState.Streaming(sb.toString())
                         },
                         onError = { msg ->
-                            if (sb.isEmpty()) {
-                                _analysisState.value = AnalysisState.Error(withNetworkHint(msg))
-                            } else {
-                                // 已有部分内容则保留已生成部分，并标注中断
-                                _analysisState.value = AnalysisState.Success(
-                                    AnalysisResult(
-                                        content = sb.toString() + "\n\n（解析中断：$msg）",
-                                        model = mdl
-                                    )
-                                )
+                            // 记录中断信息；若已有部分内容则保留已生成部分并标注中断
+                            if (sb.isNotEmpty()) {
+                                interruptedMsg = msg
                             }
                         }
                     )
@@ -448,20 +467,41 @@ class PaiPanViewModel(app: Application) : AndroidViewModel(app) {
                 if (sb.isEmpty()) {
                     _analysisState.value = AnalysisState.Error(withNetworkHint(err.message ?: "未知错误"))
                 } else {
-                    _analysisState.value = AnalysisState.Success(
-                        AnalysisResult(content = sb.toString(), model = mdl)
-                    )
+                    finishStream(sb.toString(), mdl, _analysisState, prompt)
                 }
                 return@launch
             }
-            // 正常完成（非 onError 中断）：有内容则成功，无内容则报错
-            if (sb.isEmpty()) {
+            if (interruptedMsg != null) {
+                // 流式输出中途出错但已有部分内容：保留已生成部分并标注中断
+                val finalText = sb.toString() + "\n\n（解析中断：$interruptedMsg）"
+                finishStream(finalText, mdl, _analysisState, prompt)
+            } else if (sb.isEmpty()) {
                 _analysisState.value = AnalysisState.Error(withNetworkHint("模型未返回内容。"))
             } else {
-                _analysisState.value = AnalysisState.Success(
-                    AnalysisResult(content = sb.toString(), model = mdl)
-                )
+                finishStream(sb.toString(), mdl, _analysisState, prompt)
             }
+        }
+    }
+
+    /**
+     * 流式解析完成（含正常完成与「已有部分内容但中途中断」）的统一收尾：
+     * 写入 [AnalysisState.Success] 并把首轮 system + assistant 写入对话历史，
+     * 使后续「继续向 AI 提问」能基于完整首轮解析追问，且保存/恢复时首轮正文不丢失。
+     */
+    private fun finishStream(
+        content: String,
+        model: String,
+        state: MutableStateFlow<AnalysisState>,
+        prompt: String
+    ) {
+        state.value = AnalysisState.Success(AnalysisResult(content = content, model = model))
+        // 仅在尚无对话上下文时初始化首轮（system 提示 + assistant 首轮解析），
+        // 避免覆盖用户已在「继续提问」中产生的多轮对话。
+        if (_chatMessages.value.isEmpty()) {
+            _chatMessages.value = listOf(
+                WebAnalysis.Message("system", prompt),
+                WebAnalysis.Message("assistant", content)
+            )
         }
     }
 
