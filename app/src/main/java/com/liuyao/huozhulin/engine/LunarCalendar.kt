@@ -141,8 +141,14 @@ object LunarCalendar {
     private fun yearDays(year: Int): Int {
         var sum = 0
         val leap = leapMonth(year)
+        // 累计 12 个正常月份的大小（闰月不计入这 12 月）
         for (m in 1..12) {
-            sum += monthDays(year, m, leap == m)
+            sum += monthDays(year, m, false)
+        }
+        // 若该年有闰月（leap != 0），再额外加上闰月大小（取 bit16）
+        if (leap != 0) {
+            val info = LUNAR_INFO[year - 1900]
+            sum += if (((info shr 16) and 1) == 1) 30 else 29
         }
         return sum
     }
