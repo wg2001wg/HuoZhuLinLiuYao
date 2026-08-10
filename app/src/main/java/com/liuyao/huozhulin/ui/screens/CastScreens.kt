@@ -67,6 +67,7 @@ import com.liuyao.huozhulin.data.model.DiZhi
 import com.liuyao.huozhulin.data.model.TianGan
 import com.liuyao.huozhulin.data.model.Trigram
 import com.liuyao.huozhulin.engine.CastEngine
+import com.liuyao.huozhulin.engine.LunarCalendar
 import com.liuyao.huozhulin.viewmodel.PaiPanViewModel
 import java.util.Calendar
 
@@ -408,7 +409,7 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("按图片说明：上卦=(年+月+日)除8余数；下卦=(上卦总数+时支数+附加数)除8余数；动爻=下卦总数除6余数。")
+            Text("梅花易数时间起卦（按农历）：上卦=(年支数+农历月+农历日)除8余数；下卦=(上卦总数+时支数+附加数)除8余数；动爻=下卦总数除6余数。其中「年支数」取农历年地支序数（子1…亥12），而非公元年数字。")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallOutlinedField(year, { year = it.filter { ch -> ch.isDigit() } }, "年", Modifier.weight(1f))
                 SmallOutlinedField(month, { month = it.filter { ch -> ch.isDigit() } }, "月", Modifier.weight(1f))
@@ -435,7 +436,13 @@ fun DateScreen(nav: NavHostController, vm: PaiPanViewModel) {
                     error = "日期/时间输入不合法"; return@ActionButton
                 }
                 try {
-                    val (l, mov) = CastEngine.solarDateCast(y, m, d, DiZhi.forHour(h).ordinal + 1, ex)
+                    // 梅花易数「时间起卦」须用农历年月日 + 年支数（地支序数），不能用公元年数字。
+                    val lunar = LunarCalendar.toLunar(y, m, d, h)
+                    // 农历年的地支序数：以 (农历年-4) 取 60 甲子余数，再取地支位（子1…亥12）。
+                    val ySeq = ((lunar.year - 4) % 60 + 60) % 60
+                    val yearZhiNum = DiZhi.entries[ySeq % 12].ordinal + 1
+                    val hourBranch = lunar.hourZhi.ordinal + 1
+                    val (l, mov) = CastEngine.lunarDateCast(yearZhiNum, lunar.month, lunar.day, hourBranch, ex)
                     vm.setCast(l, mov)
                     nav.navigate("result")
                 } catch (e: Exception) {

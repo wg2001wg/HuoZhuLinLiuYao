@@ -193,13 +193,13 @@ object CastEngine {
 
     /**
      * 日期卦（农历，梅花易数时间起卦）。
-     * 上卦 = (农历年 + 农历月 + 农历日) 除 8 余数；
-     * 下卦 = (农历年 + 农历月 + 农历日 + 时支数 + 附加数) 除 8 余数；
-     * 动爻 = (农历年 + 农历月 + 农历日 + 时支数 + 附加数) 除 6 余数。
-     * 「农历年」直接使用公元纪年数字（如 2026）参与运算。
+     * 上卦 = (年支数 + 农历月 + 农历日) 除 8 余数；
+     * 下卦 = (年支数 + 农历月 + 农历日 + 时支数 + 附加数) 除 8 余数；
+     * 动爻 = (年支数 + 农历月 + 农历日 + 时支数 + 附加数) 除 6 余数。
+     * 注意：参数 [yearZhiNum] 是「年支数」（农历年地支序数，子1…亥12），不是公元年数字。
      */
     fun lunarDateCast(
-        lunarYear: Int,
+        yearZhiNum: Int,
         lunarMonth: Int,
         lunarDay: Int,
         hourBranch: Int,
@@ -207,7 +207,7 @@ object CastEngine {
     ): Pair<List<Boolean>, List<Boolean>> {
         require(lunarMonth in 1..12 && lunarDay in 1..30) { "农历月日不合法" }
         val hb = hourBranch.coerceIn(1, 12)
-        val upTotal = lunarYear + lunarMonth + lunarDay
+        val upTotal = yearZhiNum + lunarMonth + lunarDay
         val allTotal = upTotal + hb + extra
         val upIdx = mod8(upTotal)
         val lowIdx = mod8(allTotal)
